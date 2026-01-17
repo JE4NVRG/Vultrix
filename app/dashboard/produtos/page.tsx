@@ -1,962 +1,970 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from "@/lib/supabase/client";
+import { useState } from "react";
 import { useAuth } from "@/lib/auth/AuthProvider";
-import {
-  Plus,
-  X,
-  Package,
-  Edit,
-  Trash2,
-  DollarSign,
-  TrendingUp,
-  Clock,
-  Weight,
-  ToggleLeft,
-  ToggleRight,
-  Check,
-  Paintbrush,
-} from "lucide-react";
+import { supabase } from "@/lib/supabase/client";
+import { motion, AnimatePresence } from "framer-motion";
+import { parse3mfFile, ProjectData3mf } from "@/lib/utils/parse3mf";
+import { useUserCostSettings } from "@/lib/hooks/useUserCostSettings";
+import { useFilaments, Filament } from "@/lib/hooks/useFilaments";
+import { usePrinters } from "@/lib/hooks/usePrinters";
 
-type Filament = {
-  id: string;
-  nome: string;
-  marca: string;
-  tipo: string;
-  cor: string;
-  custo_por_kg: number;
+type RegistrationMode = "3mf" | "quick" | "manual";
+
+type MaterialMapping = {
+  materialIndex: number;
+  materialName: string;
+  materialColor: string;
+  weightGrams: number;
+  filamentId: string | null;
 };
 
-type ProductFilament = {
-  filamento_id: string;
-  peso_usado: number;
-  ordem: number;
-  cor_identificacao: string;
+type QuickFormData = {
+  name: string;
+  timeHours: number;
+  weightGrams: number;
+  filamentId: string;
 };
 
-type Product = {
-  id: string;
-  created_at: string;
-  nome: string;
-  descricao: string | null;
-  filamento_id: string | null;
-  tempo_impressao_horas: number;
-  peso_usado: number;
-  custo_material: number;
-  custo_energia: number;
-  custo_total: number;
-  preco_venda: number;
-  margem_percentual: number;
-  status: "ativo" | "desativado";
-  filaments?: {
-    nome: string;
-    marca: string;
-    tipo: string;
-    cor: string;
-  };
+type ManualFormData = {
+  name: string;
+  description: string;
+  timeHours: number;
+  materials: Array<{
+    filamentId: string;
+    weightGrams: number;
+  }>;
+  overrideMaterialCost?: number;
+  overrideEnergyCost?: number;
+  customMarginPercent?: number;
 };
 
 export default function ProdutosPage() {
   const { user } = useAuth();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [filaments, setFilaments] = useState<Filament[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const { kwhCost, loading: costLoading } = useUserCostSettings();
+  const { filaments, loading: filamentsLoading } = useFilaments();
+  const { printers, defaultPrinter } = usePrinters();
 
-  // Form state
-  const [formData, setFormData] = useState({
-    nome: "",
-    descricao: "",
-    tempo_impressao_horas: 0,
-    custo_energia_hora: 2.0,
-    margem_percentual: 50,
-    status: "ativo" as "ativo" | "desativado",
-  });
+  // Modal State
+  const [showModal, setShowModal] = useState(false);
+  const [mode, setMode] = useState<RegistrationMode>("3mf");
+  const [saving, setSaving] = useState(false);
 
-  // Múltiplos filamentos
-  const [selectedFilaments, setSelectedFilaments] = useState<ProductFilament[]>(
-    []
+  // 3MF Mode State
+  const [projectData, setProjectData] = useState<ProjectData3mf | null>(null);
+  const [materialMappings, setMaterialMappings] = useState<MaterialMapping[]>(
+    [],
   );
-  const [currentFilament, setCurrentFilament] = useState({
-    filamento_id: "",
-    peso_usado: 0,
-    cor_identificacao: "",
+  const [uploading, setUploading] = useState(false);
+
+  // Quick Mode State
+  const [quickForm, setQuickForm] = useState<QuickFormData>({
+    name: "",
+    timeHours: 0,
+    weightGrams: 0,
+    filamentId: "",
   });
 
-  // Calculated values
-  const [custoMaterial, setCustoMaterial] = useState(0);
-  const [custoEnergia, setCustoEnergia] = useState(0);
-  const [custoTotal, setCustoTotal] = useState(0);
-  const [precoVenda, setPrecoVenda] = useState(0);
+  // Manual Mode State
+  const [manualForm, setManualForm] = useState<ManualFormData>({
+    name: "",
+    description: "",
+    timeHours: 0,
+    materials: [],
+  });
 
-  useEffect(() => {
-    if (user) {
-      loadData();
-    }
-  }, [user]);
+  // Products List
+  const [products, setProducts] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
 
-  useEffect(() => {
-    calcularCustos();
-  }, [
-    selectedFilaments,
-    formData.tempo_impressao_horas,
-    formData.custo_energia_hora,
-    formData.margem_percentual,
-  ]);
+  // Load products on mount
+  useState(() => {
+    loadProducts();
+  });
 
-  const calcularCustos = () => {
-    if (selectedFilaments.length === 0) {
-      setCustoMaterial(0);
-      setCustoEnergia(0);
-      setCustoTotal(0);
-      setPrecoVenda(0);
-      return;
-    }
-
-    // Calcular custo de todos os filamentos
-    let custoMat = 0;
-    selectedFilaments.forEach((sf) => {
-      const filamento = filaments.find((f) => f.id === sf.filamento_id);
-      if (filamento) {
-        custoMat += (sf.peso_usado / 1000) * filamento.custo_por_kg;
-      }
-    });
-
-    const custoEner =
-      formData.tempo_impressao_horas * formData.custo_energia_hora;
-    const custoTot = custoMat + custoEner;
-    const precoV = custoTot * (1 + formData.margem_percentual / 100);
-
-    setCustoMaterial(custoMat);
-    setCustoEnergia(custoEner);
-    setCustoTotal(custoTot);
-    setPrecoVenda(precoV);
-  };
-
-  const addFilament = () => {
-    if (!currentFilament.filamento_id || currentFilament.peso_usado <= 0) {
-      alert("Selecione um filamento e defina o peso");
-      return;
-    }
-
-    // Verificar se já não está adicionado
-    if (
-      selectedFilaments.some(
-        (sf) => sf.filamento_id === currentFilament.filamento_id
-      )
-    ) {
-      alert("Este filamento já foi adicionado");
-      return;
-    }
-
-    setSelectedFilaments([
-      ...selectedFilaments,
-      {
-        filamento_id: currentFilament.filamento_id,
-        peso_usado: currentFilament.peso_usado,
-        ordem: selectedFilaments.length + 1,
-        cor_identificacao: currentFilament.cor_identificacao,
-      },
-    ]);
-
-    // Limpar campos
-    setCurrentFilament({
-      filamento_id: "",
-      peso_usado: 0,
-      cor_identificacao: "",
-    });
-  };
-
-  const removeFilament = (filamentoId: string) => {
-    setSelectedFilaments(
-      selectedFilaments.filter((sf) => sf.filamento_id !== filamentoId)
-    );
-  };
-
-  const loadData = async () => {
+  const loadProducts = async () => {
     try {
-      setLoading(true);
-
-      // Carregar filamentos
-      const { data: filamentsData, error: filamentsError } = await supabase
-        .from("filaments")
-        .select("*")
-        .eq("user_id", user!.id)
-        .order("nome");
-
-      if (filamentsError) throw filamentsError;
-      setFilaments(filamentsData || []);
-
-      // Carregar produtos com info de filamento
-      const { data: productsData, error: productsError } = await supabase
+      setLoadingProducts(true);
+      const { data, error } = await supabase
         .from("products")
-        .select(
-          `
-          *,
-          filaments (nome, marca, tipo, cor)
-        `
-        )
+        .select("*")
         .eq("user_id", user!.id)
         .order("created_at", { ascending: false });
 
-      if (productsError) throw productsError;
-      setProducts(productsData || []);
-    } catch (error) {
-      console.error("Erro ao carregar dados:", error);
+      if (error) throw error;
+      setProducts(data || []);
+    } catch (err) {
+      console.error("Erro ao carregar produtos:", err);
     } finally {
-      setLoading(false);
+      setLoadingProducts(false);
     }
   };
 
+  // === 3MF MODE HANDLERS ===
+  const handle3mfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploading(true);
+      const data = await parse3mfFile(file);
+      setProjectData(data);
+
+      // Initialize material mappings
+      const mappings: MaterialMapping[] = data.materials.map((mat, index) => ({
+        materialIndex: index,
+        materialName: mat.name,
+        materialColor: mat.color,
+        weightGrams: mat.weight,
+        filamentId: null,
+      }));
+
+      setMaterialMappings(mappings);
+    } catch (err: any) {
+      alert(`Erro ao processar arquivo .3mf: ${err.message}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const updateMaterialMapping = (index: number, filamentId: string) => {
+    setMaterialMappings((prev) =>
+      prev.map((m, i) => (i === index ? { ...m, filamentId } : m)),
+    );
+  };
+
+  // === QUICK MODE HANDLERS ===
+  const updateQuickForm = (field: keyof QuickFormData, value: any) => {
+    setQuickForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // === MANUAL MODE HANDLERS ===
+  const updateManualForm = (field: keyof ManualFormData, value: any) => {
+    setManualForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const addManualMaterial = () => {
+    setManualForm((prev) => ({
+      ...prev,
+      materials: [...prev.materials, { filamentId: "", weightGrams: 0 }],
+    }));
+  };
+
+  const removeManualMaterial = (index: number) => {
+    setManualForm((prev) => ({
+      ...prev,
+      materials: prev.materials.filter((_, i) => i !== index),
+    }));
+  };
+
+  const updateManualMaterial = (
+    index: number,
+    field: "filamentId" | "weightGrams",
+    value: any,
+  ) => {
+    setManualForm((prev) => ({
+      ...prev,
+      materials: prev.materials.map((m, i) =>
+        i === index ? { ...m, [field]: value } : m,
+      ),
+    }));
+  };
+
+  // === COST CALCULATIONS ===
+  const calculateCosts = () => {
+    let materialCost = 0;
+    let timeHours = 0;
+    let totalWeight = 0;
+
+    if (mode === "3mf" && projectData) {
+      timeHours = projectData.totalTime;
+      totalWeight = projectData.totalWeight;
+
+      // Calculate material cost from mappings
+      materialMappings.forEach((mapping) => {
+        if (mapping.filamentId) {
+          const filament = filaments.find((f) => f.id === mapping.filamentId);
+          if (filament) {
+            const weightKg = mapping.weightGrams / 1000;
+            materialCost += weightKg * filament.custo_por_kg;
+          }
+        }
+      });
+    } else if (mode === "quick") {
+      timeHours = quickForm.timeHours;
+      totalWeight = quickForm.weightGrams;
+
+      const filament = filaments.find((f) => f.id === quickForm.filamentId);
+      if (filament) {
+        const weightKg = quickForm.weightGrams / 1000;
+        materialCost = weightKg * filament.custo_por_kg;
+      }
+    } else if (mode === "manual") {
+      timeHours = manualForm.timeHours;
+
+      // Use override or calculate
+      if (manualForm.overrideMaterialCost !== undefined) {
+        materialCost = manualForm.overrideMaterialCost;
+      } else {
+        manualForm.materials.forEach((mat) => {
+          const filament = filaments.find((f) => f.id === mat.filamentId);
+          if (filament) {
+            const weightKg = mat.weightGrams / 1000;
+            materialCost += weightKg * filament.custo_por_kg;
+            totalWeight += mat.weightGrams;
+          }
+        });
+      }
+    }
+
+    // Energy cost
+    const printerWatts = defaultPrinter?.power_watts_default || 250;
+    const energyCost =
+      manualForm.overrideEnergyCost !== undefined
+        ? manualForm.overrideEnergyCost
+        : (timeHours * printerWatts * kwhCost) / 1000;
+
+    const totalCost = materialCost + energyCost;
+    const marginPercent = manualForm.customMarginPercent || 50;
+    const minimumPrice = totalCost * 1.2;
+    const suggestedPrice = totalCost * (1 + marginPercent / 100);
+
+    return {
+      materialCost,
+      energyCost,
+      totalCost,
+      minimumPrice,
+      suggestedPrice,
+      totalWeight,
+      timeHours,
+    };
+  };
+
+  const costs = calculateCosts();
+
+  // === SAVE HANDLERS ===
+  const canSave = () => {
+    if (mode === "3mf") {
+      return (
+        projectData &&
+        materialMappings.every((m) => m.filamentId) &&
+        materialMappings.length > 0
+      );
+    } else if (mode === "quick") {
+      return (
+        quickForm.name.trim() &&
+        quickForm.timeHours > 0 &&
+        quickForm.weightGrams > 0 &&
+        quickForm.filamentId
+      );
+    } else if (mode === "manual") {
+      return (
+        manualForm.name.trim() &&
+        manualForm.timeHours > 0 &&
+        manualForm.materials.length > 0 &&
+        manualForm.materials.every((m) => m.filamentId && m.weightGrams > 0)
+      );
+    }
+    return false;
+  };
+
   const handleSave = async () => {
-    if (!formData.nome.trim() || selectedFilaments.length === 0) {
-      alert("Preencha o nome e adicione pelo menos um filamento");
+    if (!canSave()) {
+      alert("Preencha todos os campos obrigatórios");
       return;
     }
 
     try {
-      const productData = {
-        user_id: user!.id,
-        nome: formData.nome,
-        descricao: formData.descricao || null,
-        filamento_id: null, // Não usado para produtos multicolor
-        peso_usado: selectedFilaments.reduce(
-          (sum, sf) => sum + sf.peso_usado,
-          0
-        ),
-        tempo_impressao_horas: formData.tempo_impressao_horas,
-        custo_material: custoMaterial,
-        custo_energia: custoEnergia,
-        custo_total: custoTotal,
-        preco_venda: precoVenda,
-        margem_percentual: formData.margem_percentual,
-        status: formData.status,
-      };
+      setSaving(true);
 
-      if (editingProduct) {
-        // Atualizar produto
-        const { error } = await supabase
-          .from("products")
-          .update(productData)
-          .eq("id", editingProduct.id);
+      let productName = "";
+      if (mode === "3mf") productName = projectData!.name;
+      else if (mode === "quick") productName = quickForm.name;
+      else productName = manualForm.name;
 
-        if (error) throw error;
-
-        // Deletar filamentos antigos e inserir novos
-        await supabase
-          .from("product_filaments")
-          .delete()
-          .eq("produto_id", editingProduct.id);
-
-        const { error: filamentsError } = await supabase
-          .from("product_filaments")
-          .insert(
-            selectedFilaments.map((sf) => ({
-              produto_id: editingProduct.id,
-              filamento_id: sf.filamento_id,
-              peso_usado: sf.peso_usado,
-              ordem: sf.ordem,
-              cor_identificacao: sf.cor_identificacao || null,
-            }))
-          );
-
-        if (filamentsError) throw filamentsError;
-      } else {
-        // Criar novo produto
-        const { data: newProduct, error } = await supabase
-          .from("products")
-          .insert(productData)
-          .select()
-          .single();
-
-        if (error) throw error;
-
-        // Inserir filamentos
-        const { error: filamentsError } = await supabase
-          .from("product_filaments")
-          .insert(
-            selectedFilaments.map((sf) => ({
-              produto_id: newProduct.id,
-              filamento_id: sf.filamento_id,
-              peso_usado: sf.peso_usado,
-              ordem: sf.ordem,
-              cor_identificacao: sf.cor_identificacao || null,
-            }))
-          );
-
-        if (filamentsError) throw filamentsError;
-      }
-
-      setModalOpen(false);
-      setEditingProduct(null);
-      resetForm();
-      loadData();
-      alert("Produto salvo com sucesso!");
-    } catch (error) {
-      console.error("Erro ao salvar produto:", error);
-      alert("Erro ao salvar produto");
-    }
-  };
-
-  const handleEdit = async (product: Product) => {
-    setEditingProduct(product);
-    setFormData({
-      nome: product.nome,
-      descricao: product.descricao || "",
-      tempo_impressao_horas: product.tempo_impressao_horas,
-      custo_energia_hora:
-        product.custo_energia / (product.tempo_impressao_horas || 1),
-      margem_percentual: product.margem_percentual,
-      status: product.status,
-    });
-
-    // Carregar filamentos do produto
-    try {
-      const { data, error } = await supabase
-        .from("product_filaments")
-        .select("*")
-        .eq("produto_id", product.id)
-        .order("ordem");
-
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        setSelectedFilaments(
-          data.map((pf) => ({
-            filamento_id: pf.filamento_id,
-            peso_usado: pf.peso_usado,
-            ordem: pf.ordem,
-            cor_identificacao: pf.cor_identificacao || "",
-          }))
-        );
-      } else {
-        // Produto antigo com filamento único
-        if (product.filamento_id) {
-          setSelectedFilaments([
-            {
-              filamento_id: product.filamento_id,
-              peso_usado: product.peso_usado,
-              ordem: 1,
-              cor_identificacao: "",
-            },
-          ]);
-        }
-      }
-    } catch (error) {
-      console.error("Erro ao carregar filamentos do produto:", error);
-    }
-
-    setModalOpen(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Tem certeza que deseja excluir este produto?")) return;
-
-    try {
-      const { error } = await supabase.from("products").delete().eq("id", id);
-
-      if (error) throw error;
-      loadData();
-    } catch (error) {
-      console.error("Erro ao deletar produto:", error);
-      alert("Erro ao deletar produto");
-    }
-  };
-
-  const toggleStatus = async (product: Product) => {
-    try {
-      const newStatus = product.status === "ativo" ? "desativado" : "ativo";
-
-      const { error } = await supabase
+      const { data: product, error: productError } = await supabase
         .from("products")
-        .update({ status: newStatus })
-        .eq("id", product.id);
+        .insert({
+          user_id: user!.id,
+          nome: productName,
+          descricao: mode === "manual" ? manualForm.description : null,
+          tempo_impressao_horas: costs.timeHours,
+          peso_usado: costs.totalWeight,
+          custo_material: costs.materialCost,
+          custo_energia: costs.energyCost,
+          custo_total: costs.totalCost,
+          preco_venda: costs.suggestedPrice,
+          margem_percentual:
+            mode === "manual" && manualForm.customMarginPercent
+              ? manualForm.customMarginPercent
+              : 50,
+          status: "ativo",
+        })
+        .select()
+        .single();
 
-      if (error) throw error;
-      loadData();
-    } catch (error) {
-      console.error("Erro ao alterar status:", error);
-      alert("Erro ao alterar status");
+      if (productError) throw productError;
+
+      // Save multi-filament breakdown if needed
+      if (
+        mode === "3mf" ||
+        (mode === "manual" && manualForm.materials.length > 1)
+      ) {
+        const filamentBreakdown =
+          mode === "3mf"
+            ? materialMappings.map((m) => ({
+                product_id: product.id,
+                filament_id: m.filamentId!,
+                peso_gramas: m.weightGrams,
+              }))
+            : manualForm.materials.map((m) => ({
+                product_id: product.id,
+                filament_id: m.filamentId,
+                peso_gramas: m.weightGrams,
+              }));
+
+        const { error: breakdownError } = await supabase
+          .from("product_filaments")
+          .insert(filamentBreakdown);
+
+        if (breakdownError) throw breakdownError;
+      }
+
+      // Reset and reload
+      alert("Produto cadastrado com sucesso!");
+      resetModal();
+      setShowModal(false);
+      loadProducts();
+    } catch (err: any) {
+      console.error("Erro ao salvar produto:", err);
+      alert(`Erro ao salvar produto: ${err.message}`);
+    } finally {
+      setSaving(false);
     }
   };
 
-  const resetForm = () => {
-    setFormData({
-      nome: "",
-      descricao: "",
-      tempo_impressao_horas: 0,
-      custo_energia_hora: 2.0,
-      margem_percentual: 50,
-      status: "ativo",
-    });
-    setSelectedFilaments([]);
-    setCurrentFilament({
-      filamento_id: "",
-      peso_usado: 0,
-      cor_identificacao: "",
+  const resetModal = () => {
+    setMode("3mf");
+    setProjectData(null);
+    setMaterialMappings([]);
+    setQuickForm({ name: "", timeHours: 0, weightGrams: 0, filamentId: "" });
+    setManualForm({
+      name: "",
+      description: "",
+      timeHours: 0,
+      materials: [],
     });
   };
-
-  const openModal = () => {
-    resetForm();
-    setEditingProduct(null);
-    setModalOpen(true);
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="text-white text-lg">Carregando produtos...</div>
-      </div>
-    );
-  }
-
-  const produtosAtivos = products.filter((p) => p.status === "ativo").length;
-  const lucroMedioPercentual =
-    products.length > 0
-      ? products.reduce((acc, p) => acc + p.margem_percentual, 0) /
-        products.length
-      : 0;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Produtos</h1>
-          <p className="text-vultrix-light/70">
-            Gerencie seu catálogo de produtos
-          </p>
-        </div>
-        <button
-          onClick={openModal}
-          className="flex items-center gap-2 px-6 py-3 bg-vultrix-accent text-white rounded-lg font-semibold hover:bg-vultrix-accent/90 transition-colors"
-        >
-          <Plus size={20} />
-          Novo Produto
-        </button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-6"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
-              <Package className="text-blue-500" size={24} />
-            </div>
-          </div>
-          <h3 className="text-2xl font-bold text-white mb-1">
-            {products.length}
-          </h3>
-          <p className="text-vultrix-light/70 text-sm">Total de Produtos</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-6"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
-              <Check className="text-green-500" size={24} />
-            </div>
-          </div>
-          <h3 className="text-2xl font-bold text-white mb-1">
-            {produtosAtivos}
-          </h3>
-          <p className="text-vultrix-light/70 text-sm">Produtos Ativos</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-6"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-purple-500/10 rounded-lg flex items-center justify-center">
-              <TrendingUp className="text-purple-500" size={24} />
-            </div>
-          </div>
-          <h3 className="text-2xl font-bold text-white mb-1">
-            {lucroMedioPercentual.toFixed(0)}%
-          </h3>
-          <p className="text-vultrix-light/70 text-sm">Margem Média</p>
-        </motion.div>
-      </div>
-
-      {/* Products Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {products.length === 0 ? (
-          <div className="col-span-full bg-vultrix-dark border border-vultrix-gray rounded-xl p-12 text-center">
-            <Package className="mx-auto text-vultrix-light/40 mb-4" size={48} />
-            <p className="text-vultrix-light/70 mb-4">
-              Nenhum produto cadastrado
+    <div className="min-h-screen bg-black text-white">
+      <main className="container mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
+              Produtos
+            </h1>
+            <p className="text-gray-400 mt-2">
+              Gerencie seus produtos impressos em 3D
             </p>
-            <button
-              onClick={openModal}
-              className="text-vultrix-accent hover:text-vultrix-accent/80 text-sm font-medium"
-            >
-              Cadastrar primeiro produto
-            </button>
+          </div>
+
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg font-semibold hover:opacity-90 transition-opacity"
+          >
+            + Novo Produto
+          </button>
+        </div>
+
+        {/* Products Grid */}
+        {loadingProducts ? (
+          <div className="text-center text-gray-400 py-12">
+            Carregando produtos...
+          </div>
+        ) : products.length === 0 ? (
+          <div className="text-center text-gray-400 py-12">
+            Nenhum produto cadastrado ainda.
           </div>
         ) : (
-          products.map((product, index) => (
-            <motion.div
-              key={product.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-              className={`bg-vultrix-dark border rounded-xl p-6 hover:border-vultrix-accent transition-colors ${
-                product.status === "ativo"
-                  ? "border-vultrix-gray"
-                  : "border-vultrix-gray/50 opacity-60"
-              }`}
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-white mb-1">
-                    {product.nome}
-                  </h3>
-                  {product.descricao && (
-                    <p className="text-vultrix-light/60 text-sm line-clamp-2">
-                      {product.descricao}
-                    </p>
-                  )}
-                </div>
-                <button
-                  onClick={() => toggleStatus(product)}
-                  className="ml-2 p-2 hover:bg-vultrix-gray rounded-lg transition-colors"
-                  title={product.status === "ativo" ? "Desativar" : "Ativar"}
-                >
-                  {product.status === "ativo" ? (
-                    <ToggleRight className="text-green-500" size={20} />
-                  ) : (
-                    <ToggleLeft className="text-vultrix-light/40" size={20} />
-                  )}
-                </button>
-              </div>
-
-              {/* Filamento */}
-              {product.filaments && (
-                <div className="mb-4 p-3 bg-vultrix-black rounded-lg">
-                  <p className="text-xs text-vultrix-light/50 mb-1">
-                    Filamento
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {products.map((product) => (
+              <div
+                key={product.id}
+                className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 hover:border-purple-600 transition-colors"
+              >
+                <h3 className="text-xl font-bold mb-2">{product.nome}</h3>
+                {product.descricao && (
+                  <p className="text-gray-400 text-sm mb-4">
+                    {product.descricao}
                   </p>
-                  <p className="text-white text-sm font-medium">
-                    {product.filaments.nome} - {product.filaments.tipo}
-                  </p>
-                  <p className="text-vultrix-light/60 text-xs">
-                    {product.filaments.marca} • {product.filaments.cor}
-                  </p>
-                </div>
-              )}
+                )}
 
-              {/* Specs */}
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="flex items-center gap-2 text-sm">
-                  <Weight size={14} className="text-vultrix-light/50" />
-                  <span className="text-vultrix-light/70">
-                    {product.peso_usado}g
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Clock size={14} className="text-vultrix-light/50" />
-                  <span className="text-vultrix-light/70">
-                    {product.tempo_impressao_horas}h
-                  </span>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Tempo:</span>
+                    <span>{product.tempo_impressao_horas.toFixed(2)}h</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Peso:</span>
+                    <span>{product.peso_usado.toFixed(0)}g</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Custo Total:</span>
+                    <span>R$ {product.custo_total.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-green-400">
+                    <span>Preço Venda:</span>
+                    <span>R$ {product.preco_venda.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-purple-400">
+                    <span>Margem:</span>
+                    <span>{product.margem_percentual.toFixed(0)}%</span>
+                  </div>
                 </div>
               </div>
-
-              {/* Custos e Preço */}
-              <div className="space-y-2 mb-4 p-3 bg-vultrix-black rounded-lg">
-                <div className="flex justify-between text-sm">
-                  <span className="text-vultrix-light/60">Custo Total:</span>
-                  <span className="text-red-400 font-semibold">
-                    R$ {product.custo_total.toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-vultrix-light/60">Preço Venda:</span>
-                  <span className="text-green-400 font-bold">
-                    R$ {product.preco_venda.toFixed(2)}
-                  </span>
-                </div>
-                <div className="pt-2 border-t border-vultrix-gray flex justify-between text-sm">
-                  <span className="text-vultrix-light/60">Margem:</span>
-                  <span className="text-vultrix-accent font-bold">
-                    {product.margem_percentual.toFixed(0)}%
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-vultrix-light/60">Lucro:</span>
-                  <span className="text-green-500 font-bold">
-                    R$ {(product.preco_venda - product.custo_total).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleEdit(product)}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-vultrix-gray text-white rounded-lg hover:bg-vultrix-light/10 transition-colors text-sm font-medium"
-                >
-                  <Edit size={14} />
-                  Editar
-                </button>
-                <button
-                  onClick={() => handleDelete(product.id)}
-                  className="px-4 py-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition-colors"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </motion.div>
-          ))
+            ))}
+          </div>
         )}
-      </div>
+      </main>
 
       {/* Modal */}
       <AnimatePresence>
-        {modalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
+        {showModal && (
+          <>
+            {/* Backdrop */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-vultrix-dark border border-vultrix-gray rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !saving && setShowModal(false)}
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40"
+            />
+
+            {/* Modal Content */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
             >
-              <div className="p-6 border-b border-vultrix-gray flex items-center justify-between sticky top-0 bg-vultrix-dark z-10">
-                <h2 className="text-2xl font-bold text-white">
-                  {editingProduct ? "Editar Produto" : "Novo Produto"}
-                </h2>
-                <button
-                  onClick={() => {
-                    setModalOpen(false);
-                    setEditingProduct(null);
-                  }}
-                  className="p-2 hover:bg-vultrix-gray rounded-lg transition-colors text-vultrix-light"
-                >
-                  <X size={20} />
-                </button>
-              </div>
+              <div
+                className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto pointer-events-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Modal Header */}
+                <div className="border-b border-zinc-800 p-6">
+                  <h2 className="text-2xl font-bold">Cadastrar Novo Produto</h2>
+                  <p className="text-gray-400 text-sm mt-1">
+                    Escolha o modo de cadastro e preencha os dados
+                  </p>
+                </div>
 
-              <div className="p-6 space-y-6">
-                {/* Nome e Descrição */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-vultrix-light mb-2">
-                      Nome do Produto *
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.nome}
-                      onChange={(e) =>
-                        setFormData({ ...formData, nome: e.target.value })
-                      }
-                      placeholder="Ex: Miniatura de Dragão"
-                      className="w-full px-4 py-3 bg-vultrix-black border border-vultrix-gray rounded-lg text-white placeholder-vultrix-light/40 focus:outline-none focus:border-vultrix-accent"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-vultrix-light mb-2">
-                      Status
-                    </label>
-                    <select
-                      value={formData.status}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          status: e.target.value as "ativo" | "desativado",
-                        })
-                      }
-                      className="w-full px-4 py-3 bg-vultrix-black border border-vultrix-gray rounded-lg text-white focus:outline-none focus:border-vultrix-accent"
+                {/* Mode Selector */}
+                <div className="p-6 border-b border-zinc-800">
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => setMode("3mf")}
+                      className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${
+                        mode === "3mf"
+                          ? "bg-gradient-to-r from-purple-600 to-pink-600"
+                          : "bg-zinc-800 hover:bg-zinc-700"
+                      }`}
                     >
-                      <option value="ativo">Ativo</option>
-                      <option value="desativado">Desativado</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-vultrix-light mb-2">
-                    Descrição (opcional)
-                  </label>
-                  <textarea
-                    value={formData.descricao}
-                    onChange={(e) =>
-                      setFormData({ ...formData, descricao: e.target.value })
-                    }
-                    placeholder="Detalhes do produto..."
-                    rows={3}
-                    className="w-full px-4 py-3 bg-vultrix-black border border-vultrix-gray rounded-lg text-white placeholder-vultrix-light/40 focus:outline-none focus:border-vultrix-accent resize-none"
-                  />
-                </div>
-
-                {/* Filamentos (Multicolor) */}
-                <div>
-                  <label className="block text-sm font-medium text-vultrix-light mb-3">
-                    Filamentos Utilizados *{" "}
-                    {selectedFilaments.length > 1 && (
-                      <span className="text-vultrix-accent">(Multicolor)</span>
-                    )}
-                  </label>
-
-                  {/* Lista de filamentos adicionados */}
-                  {selectedFilaments.length > 0 && (
-                    <div className="mb-4 space-y-2">
-                      {selectedFilaments.map((sf) => {
-                        const filamento = filaments.find(
-                          (f) => f.id === sf.filamento_id
-                        );
-                        return (
-                          <div
-                            key={sf.filamento_id}
-                            className="flex items-center gap-3 p-3 bg-vultrix-black border border-vultrix-gray rounded-lg"
-                          >
-                            <div className="flex items-center gap-2 flex-1">
-                              <Paintbrush
-                                size={16}
-                                className="text-vultrix-accent"
-                              />
-                              <div className="flex-1">
-                                <p className="text-white font-medium text-sm">
-                                  {filamento?.nome} - {filamento?.cor}
-                                </p>
-                                <p className="text-vultrix-light/60 text-xs">
-                                  {sf.peso_usado}g
-                                  {sf.cor_identificacao &&
-                                    ` • ${sf.cor_identificacao}`}
-                                </p>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeFilament(sf.filamento_id)}
-                              className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition-colors"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* Adicionar novo filamento */}
-                  <div className="bg-vultrix-black border border-vultrix-gray rounded-lg p-4 space-y-3">
-                    <div>
-                      <select
-                        value={currentFilament.filamento_id}
-                        onChange={(e) =>
-                          setCurrentFilament({
-                            ...currentFilament,
-                            filamento_id: e.target.value,
-                          })
-                        }
-                        className="w-full px-4 py-3 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white focus:outline-none focus:border-vultrix-accent"
-                      >
-                        <option value="">Selecione um filamento</option>
-                        {filaments.map((fil) => (
-                          <option key={fil.id} value={fil.id}>
-                            {fil.nome} - {fil.cor} ({fil.marca}) - R${" "}
-                            {fil.custo_por_kg.toFixed(2)}/kg
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          value={currentFilament.peso_usado || ""}
-                          onChange={(e) =>
-                            setCurrentFilament({
-                              ...currentFilament,
-                              peso_usado: parseFloat(e.target.value) || 0,
-                            })
-                          }
-                          placeholder="Peso (gramas)"
-                          className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white placeholder-vultrix-light/40 focus:outline-none focus:border-vultrix-accent text-sm"
-                        />
-                      </div>
-                      <div>
-                        <input
-                          type="text"
-                          value={currentFilament.cor_identificacao}
-                          onChange={(e) =>
-                            setCurrentFilament({
-                              ...currentFilament,
-                              cor_identificacao: e.target.value,
-                            })
-                          }
-                          placeholder="Identificação (opcional)"
-                          className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white placeholder-vultrix-light/40 focus:outline-none focus:border-vultrix-accent text-sm"
-                        />
-                      </div>
-                    </div>
+                      📁 Importar .3mf
+                      <span className="block text-xs text-gray-400 mt-1">
+                        (Recomendado)
+                      </span>
+                    </button>
 
                     <button
-                      type="button"
-                      onClick={addFilament}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-vultrix-accent/20 text-vultrix-accent rounded-lg hover:bg-vultrix-accent/30 transition-colors text-sm font-medium"
+                      onClick={() => setMode("quick")}
+                      className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${
+                        mode === "quick"
+                          ? "bg-gradient-to-r from-purple-600 to-pink-600"
+                          : "bg-zinc-800 hover:bg-zinc-700"
+                      }`}
                     >
-                      <Plus size={16} />
-                      Adicionar Filamento
+                      ⚡ Cadastro Rápido
+                      <span className="block text-xs text-gray-400 mt-1">
+                        Apenas essencial
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => setMode("manual")}
+                      className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${
+                        mode === "manual"
+                          ? "bg-gradient-to-r from-purple-600 to-pink-600"
+                          : "bg-zinc-800 hover:bg-zinc-700"
+                      }`}
+                    >
+                      ✏️ Manual Completo
+                      <span className="block text-xs text-gray-400 mt-1">
+                        Controle total
+                      </span>
                     </button>
                   </div>
                 </div>
 
-                {/* Tempo */}
-                <div>
-                  <label className="block text-sm font-medium text-vultrix-light mb-2">
-                    Tempo Médio de Impressão (horas) *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={formData.tempo_impressao_horas || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        tempo_impressao_horas: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                    placeholder="Ex: 3.5"
-                    className="w-full px-4 py-3 bg-vultrix-black border border-vultrix-gray rounded-lg text-white placeholder-vultrix-light/40 focus:outline-none focus:border-vultrix-accent"
-                    required
-                  />
-                </div>
+                {/* Modal Body - Dynamic Content by Mode */}
+                <div className="p-6 space-y-6">
+                  {/* 3MF MODE */}
+                  {mode === "3mf" && (
+                    <>
+                      {!projectData ? (
+                        <div>
+                          <label className="block text-sm font-medium mb-2">
+                            Arquivo .3mf do Bambu Studio
+                          </label>
+                          <input
+                            type="file"
+                            accept=".3mf"
+                            onChange={handle3mfUpload}
+                            disabled={uploading}
+                            className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-purple-600 disabled:opacity-50"
+                          />
+                          {uploading && (
+                            <p className="text-sm text-gray-400 mt-2">
+                              Processando arquivo...
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <>
+                          {/* Project Data Preview */}
+                          <div className="bg-zinc-800 rounded-lg p-4 space-y-2">
+                            <h3 className="font-semibold text-lg">
+                              {projectData.name}
+                            </h3>
+                            <div className="grid grid-cols-3 gap-4 text-sm">
+                              <div>
+                                <span className="text-gray-400">Tempo:</span>
+                                <span className="ml-2">
+                                  {projectData.totalTime.toFixed(2)}h
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">Peso:</span>
+                                <span className="ml-2">
+                                  {projectData.totalWeight.toFixed(0)}g
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">
+                                  Materiais:
+                                </span>
+                                <span className="ml-2">
+                                  {projectData.materials.length}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
 
-                {/* Custo Energia e Margem */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-vultrix-light mb-2">
-                      Custo Energia/Hora (R$)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={formData.custo_energia_hora}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          custo_energia_hora: parseFloat(e.target.value) || 0,
-                        })
-                      }
-                      className="w-full px-4 py-3 bg-vultrix-black border border-vultrix-gray rounded-lg text-white focus:outline-none focus:border-vultrix-accent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-vultrix-light mb-2">
-                      Margem de Lucro (%)
-                    </label>
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      value={formData.margem_percentual}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          margem_percentual: parseFloat(e.target.value) || 0,
-                        })
-                      }
-                      className="w-full px-4 py-3 bg-vultrix-black border border-vultrix-gray rounded-lg text-white focus:outline-none focus:border-vultrix-accent"
-                    />
-                  </div>
-                </div>
+                          {/* Material Mapping */}
+                          <div>
+                            <h4 className="font-semibold mb-3">
+                              Vincular Materiais aos Filamentos
+                            </h4>
+                            <div className="space-y-3">
+                              {materialMappings.map((mapping, index) => (
+                                <div
+                                  key={index}
+                                  className="bg-zinc-800 rounded-lg p-4 space-y-2"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div
+                                      className="w-6 h-6 rounded-full border-2 border-white"
+                                      style={{
+                                        backgroundColor: mapping.materialColor,
+                                      }}
+                                    />
+                                    <div className="flex-1">
+                                      <div className="font-medium">
+                                        {mapping.materialName}
+                                      </div>
+                                      <div className="text-xs text-gray-400">
+                                        {mapping.weightGrams.toFixed(0)}g
+                                      </div>
+                                    </div>
+                                  </div>
 
-                {/* Preview dos Cálculos */}
-                {custoTotal > 0 && (
-                  <div className="bg-vultrix-black border border-vultrix-gray rounded-lg p-6">
-                    <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                      <DollarSign size={20} className="text-vultrix-accent" />
-                      Cálculo Automático
-                    </h3>
-                    <div className="grid grid-cols-2 gap-4">
+                                  <select
+                                    value={mapping.filamentId || ""}
+                                    onChange={(e) =>
+                                      updateMaterialMapping(
+                                        index,
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg focus:outline-none focus:border-purple-600"
+                                  >
+                                    <option value="">
+                                      Selecione o filamento...
+                                    </option>
+                                    {filaments.map((fil) => (
+                                      <option key={fil.id} value={fil.id}>
+                                        {fil.nome} - {fil.marca} ({fil.tipo}) -
+                                        R$ {fil.custo_por_kg.toFixed(2)}/kg
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
+
+                  {/* QUICK MODE */}
+                  {mode === "quick" && (
+                    <>
                       <div>
-                        <p className="text-xs text-vultrix-light/50 mb-1">
-                          Custo Material
-                        </p>
-                        <p className="text-red-400 font-semibold">
-                          R$ {custoMaterial.toFixed(2)}
-                        </p>
+                        <label className="block text-sm font-medium mb-2">
+                          Nome do Produto *
+                        </label>
+                        <input
+                          type="text"
+                          value={quickForm.name}
+                          onChange={(e) =>
+                            updateQuickForm("name", e.target.value)
+                          }
+                          placeholder="Ex: Vaso decorativo"
+                          className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-purple-600"
+                        />
                       </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium mb-2">
+                            Tempo de Impressão (horas) *
+                          </label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={quickForm.timeHours}
+                            onChange={(e) =>
+                              updateQuickForm(
+                                "timeHours",
+                                parseFloat(e.target.value),
+                              )
+                            }
+                            className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-purple-600"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-2">
+                            Peso Usado (gramas) *
+                          </label>
+                          <input
+                            type="number"
+                            step="1"
+                            min="0"
+                            value={quickForm.weightGrams}
+                            onChange={(e) =>
+                              updateQuickForm(
+                                "weightGrams",
+                                parseFloat(e.target.value),
+                              )
+                            }
+                            className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-purple-600"
+                          />
+                        </div>
+                      </div>
+
                       <div>
-                        <p className="text-xs text-vultrix-light/50 mb-1">
-                          Custo Energia
-                        </p>
-                        <p className="text-red-400 font-semibold">
-                          R$ {custoEnergia.toFixed(2)}
-                        </p>
+                        <label className="block text-sm font-medium mb-2">
+                          Filamento Usado *
+                        </label>
+                        <select
+                          value={quickForm.filamentId}
+                          onChange={(e) =>
+                            updateQuickForm("filamentId", e.target.value)
+                          }
+                          className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-purple-600"
+                        >
+                          <option value="">Selecione...</option>
+                          {filaments.map((fil) => (
+                            <option key={fil.id} value={fil.id}>
+                              {fil.nome} - {fil.marca} ({fil.tipo}) - R${" "}
+                              {fil.custo_por_kg.toFixed(2)}/kg
+                            </option>
+                          ))}
+                        </select>
                       </div>
+                    </>
+                  )}
+
+                  {/* MANUAL MODE */}
+                  {mode === "manual" && (
+                    <>
                       <div>
-                        <p className="text-xs text-vultrix-light/50 mb-1">
-                          Custo Total
-                        </p>
-                        <p className="text-red-500 font-bold text-lg">
-                          R$ {custoTotal.toFixed(2)}
-                        </p>
+                        <label className="block text-sm font-medium mb-2">
+                          Nome do Produto *
+                        </label>
+                        <input
+                          type="text"
+                          value={manualForm.name}
+                          onChange={(e) =>
+                            updateManualForm("name", e.target.value)
+                          }
+                          placeholder="Ex: Peça personalizada"
+                          className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-purple-600"
+                        />
                       </div>
+
                       <div>
-                        <p className="text-xs text-vultrix-light/50 mb-1">
-                          Preço Sugerido
-                        </p>
-                        <p className="text-green-500 font-bold text-lg">
-                          R$ {precoVenda.toFixed(2)}
-                        </p>
+                        <label className="block text-sm font-medium mb-2">
+                          Descrição (opcional)
+                        </label>
+                        <textarea
+                          value={manualForm.description}
+                          onChange={(e) =>
+                            updateManualForm("description", e.target.value)
+                          }
+                          placeholder="Detalhes sobre o produto..."
+                          rows={3}
+                          className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-purple-600 resize-none"
+                        />
                       </div>
-                      <div className="col-span-2 pt-3 border-t border-vultrix-gray">
-                        <p className="text-xs text-vultrix-light/50 mb-1">
-                          Lucro Estimado
-                        </p>
-                        <p className="text-green-400 font-bold text-xl">
-                          R$ {(precoVenda - custoTotal).toFixed(2)} (
-                          {formData.margem_percentual}%)
-                        </p>
+
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Tempo de Impressão (horas) *
+                        </label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          value={manualForm.timeHours}
+                          onChange={(e) =>
+                            updateManualForm(
+                              "timeHours",
+                              parseFloat(e.target.value),
+                            )
+                          }
+                          className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-purple-600"
+                        />
+                      </div>
+
+                      {/* Materials Section */}
+                      <div>
+                        <div className="flex justify-between items-center mb-3">
+                          <label className="block text-sm font-medium">
+                            Materiais Usados *
+                          </label>
+                          <button
+                            onClick={addManualMaterial}
+                            className="px-3 py-1 bg-purple-600 rounded-lg text-sm hover:opacity-90"
+                          >
+                            + Adicionar Material
+                          </button>
+                        </div>
+
+                        {manualForm.materials.length === 0 ? (
+                          <div className="text-center text-gray-400 py-4 bg-zinc-800 rounded-lg">
+                            Nenhum material adicionado ainda
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {manualForm.materials.map((material, index) => (
+                              <div
+                                key={index}
+                                className="bg-zinc-800 rounded-lg p-4 space-y-2"
+                              >
+                                <div className="flex justify-between items-center">
+                                  <span className="font-medium">
+                                    Material {index + 1}
+                                  </span>
+                                  <button
+                                    onClick={() => removeManualMaterial(index)}
+                                    className="text-red-400 hover:text-red-300 text-sm"
+                                  >
+                                    Remover
+                                  </button>
+                                </div>
+
+                                <select
+                                  value={material.filamentId}
+                                  onChange={(e) =>
+                                    updateManualMaterial(
+                                      index,
+                                      "filamentId",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg focus:outline-none focus:border-purple-600"
+                                >
+                                  <option value="">
+                                    Selecione o filamento...
+                                  </option>
+                                  {filaments.map((fil) => (
+                                    <option key={fil.id} value={fil.id}>
+                                      {fil.nome} - {fil.marca} ({fil.tipo}) - R${" "}
+                                      {fil.custo_por_kg.toFixed(2)}/kg
+                                    </option>
+                                  ))}
+                                </select>
+
+                                <input
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={material.weightGrams}
+                                  onChange={(e) =>
+                                    updateManualMaterial(
+                                      index,
+                                      "weightGrams",
+                                      parseFloat(e.target.value),
+                                    )
+                                  }
+                                  placeholder="Peso em gramas"
+                                  className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg focus:outline-none focus:border-purple-600"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Advanced Options */}
+                      <details className="bg-zinc-800 rounded-lg p-4">
+                        <summary className="cursor-pointer font-medium">
+                          Opções Avançadas
+                        </summary>
+                        <div className="mt-4 space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium mb-2">
+                              Custo Material (substituir cálculo)
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={manualForm.overrideMaterialCost || ""}
+                              onChange={(e) =>
+                                updateManualForm(
+                                  "overrideMaterialCost",
+                                  e.target.value
+                                    ? parseFloat(e.target.value)
+                                    : undefined,
+                                )
+                              }
+                              placeholder="R$ (opcional)"
+                              className="w-full px-4 py-2 bg-zinc-700 border border-zinc-600 rounded-lg focus:outline-none focus:border-purple-600"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium mb-2">
+                              Custo Energia (substituir cálculo)
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={manualForm.overrideEnergyCost || ""}
+                              onChange={(e) =>
+                                updateManualForm(
+                                  "overrideEnergyCost",
+                                  e.target.value
+                                    ? parseFloat(e.target.value)
+                                    : undefined,
+                                )
+                              }
+                              placeholder="R$ (opcional)"
+                              className="w-full px-4 py-2 bg-zinc-700 border border-zinc-600 rounded-lg focus:outline-none focus:border-purple-600"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium mb-2">
+                              Margem de Lucro Personalizada (%)
+                            </label>
+                            <input
+                              type="number"
+                              step="1"
+                              min="0"
+                              value={manualForm.customMarginPercent || ""}
+                              onChange={(e) =>
+                                updateManualForm(
+                                  "customMarginPercent",
+                                  e.target.value
+                                    ? parseFloat(e.target.value)
+                                    : undefined,
+                                )
+                              }
+                              placeholder="50 (padrão)"
+                              className="w-full px-4 py-2 bg-zinc-700 border border-zinc-600 rounded-lg focus:outline-none focus:border-purple-600"
+                            />
+                          </div>
+                        </div>
+                      </details>
+                    </>
+                  )}
+
+                  {/* Cost Preview */}
+                  {canSave() && (
+                    <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-700/50 rounded-lg p-4">
+                      <h4 className="font-semibold mb-3 text-purple-300">
+                        💰 Previsão de Custos e Preço
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Material:</span>
+                          <span>R$ {costs.materialCost.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Energia:</span>
+                          <span>R$ {costs.energyCost.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between font-bold">
+                          <span className="text-gray-300">Custo Total:</span>
+                          <span>R$ {costs.totalCost.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Preço Mínimo:</span>
+                          <span>R$ {costs.minimumPrice.toFixed(2)}</span>
+                        </div>
+                        <div className="col-span-2 flex justify-between font-bold text-green-400">
+                          <span>Preço Sugerido:</span>
+                          <span className="text-lg">
+                            R$ {costs.suggestedPrice.toFixed(2)}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
-                {/* Actions */}
-                <div className="flex gap-3 pt-4">
+                {/* Modal Footer */}
+                <div className="border-t border-zinc-800 p-6 flex justify-end gap-3">
                   <button
                     onClick={() => {
-                      setModalOpen(false);
-                      setEditingProduct(null);
+                      resetModal();
+                      setShowModal(false);
                     }}
-                    className="flex-1 px-6 py-3 bg-vultrix-gray text-white rounded-lg font-semibold hover:bg-vultrix-light/10 transition-colors"
+                    disabled={saving}
+                    className="px-6 py-2 bg-zinc-800 rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-50"
                   >
                     Cancelar
                   </button>
                   <button
                     onClick={handleSave}
-                    className="flex-1 px-6 py-3 bg-vultrix-accent text-white rounded-lg font-semibold hover:bg-vultrix-accent/90 transition-colors"
+                    disabled={!canSave() || saving}
+                    className="px-6 py-2 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                   >
-                    {editingProduct ? "Atualizar" : "Salvar Produto"}
+                    {saving ? "Salvando..." : "Cadastrar Produto"}
                   </button>
                 </div>
               </div>
             </motion.div>
-          </div>
+          </>
         )}
       </AnimatePresence>
     </div>
