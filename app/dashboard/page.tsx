@@ -21,6 +21,9 @@ import {
   Printer,
   User,
   X,
+  CheckCircle2,
+  Circle,
+  AlertTriangle,
 } from "lucide-react";
 
 type BalanceData = {
@@ -51,8 +54,11 @@ type DashboardMetrics = {
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
-  const { status: onboardingStatus, loading: onboardingLoading } = useOnboardingStatus();
-  const [showBanner, setShowBanner] = useState(true);
+  const { 
+    status: onboardingStatus, 
+    loading: onboardingLoading,
+    dismiss 
+  } = useOnboardingStatus();
 
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     balance: {
@@ -249,50 +255,168 @@ export default function DashboardPage() {
   }
 
   const maxVendaDia = Math.max(...metrics.vendasPorDia.map((v) => v.valor), 1);
-  const shouldShowBanner = !onboardingLoading && !onboardingStatus.hasPrinter && showBanner;
+  
+  // Banner logic: show if not complete AND not dismissed
+  const shouldShowBanner = !onboardingLoading && 
+                          !onboardingStatus.isComplete && 
+                          !onboardingStatus.isDismissed;
+
+  // Get user initials for avatar fallback
+  const getInitials = (name: string | null) => {
+    if (!name) return "?";
+    const parts = name.split(" ");
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  const handleDismissBanner = async () => {
+    await dismiss();
+  };
 
   return (
     <div className="space-y-6">
+      {/* Welcome Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-gradient-to-r from-vultrix-dark/50 to-vultrix-gray/30 border border-vultrix-light/10 rounded-xl p-6"
+      >
+        <div className="flex items-center gap-4">
+          {/* Avatar */}
+          <div className="relative">
+            {onboardingStatus.avatarUrl ? (
+              <img
+                src={onboardingStatus.avatarUrl}
+                alt="Avatar"
+                className="w-16 h-16 rounded-full object-cover border-2 border-vultrix-accent/30"
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-vultrix-accent to-purple-600 flex items-center justify-center text-white font-bold text-xl border-2 border-vultrix-accent/30">
+                {getInitials(onboardingStatus.displayName)}
+              </div>
+            )}
+            <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 rounded-full border-2 border-vultrix-dark"></div>
+          </div>
+
+          {/* Greeting */}
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold text-white">
+              {onboardingStatus.displayName
+                ? `Bem-vindo de volta, ${onboardingStatus.displayName}! 👋`
+                : "Bem-vindo de volta! 👋"}
+            </h2>
+            <p className="text-vultrix-light/70 text-sm mt-1">
+              {onboardingStatus.displayName
+                ? "Aqui está o resumo do seu negócio"
+                : "Complete seu perfil para personalizar sua experiência"}
+            </p>
+          </div>
+
+          {/* Quick Actions */}
+          {!onboardingStatus.displayName && (
+            <Link
+              href="/dashboard/perfil"
+              className="bg-vultrix-accent/20 hover:bg-vultrix-accent/30 text-vultrix-accent border border-vultrix-accent/30 font-semibold py-2 px-4 rounded-lg transition-all"
+            >
+              Completar Perfil
+            </Link>
+          )}
+        </div>
+      </motion.div>
+
       {/* Onboarding Banner */}
       {shouldShowBanner && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-vultrix-accent/20 to-vultrix-accent/5 border border-vultrix-accent/30 rounded-lg p-6 relative"
+          className="bg-gradient-to-r from-amber-500/20 to-orange-500/5 border border-amber-500/30 rounded-xl p-6 relative overflow-hidden"
         >
+          {/* Background decoration */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl"></div>
+          
           <button
-            onClick={() => setShowBanner(false)}
-            className="absolute top-4 right-4 text-vultrix-light/60 hover:text-white transition-colors"
+            onClick={handleDismissBanner}
+            className="absolute top-4 right-4 text-vultrix-light/60 hover:text-white transition-colors z-10"
+            title="Dispensar"
           >
             <X size={20} />
           </button>
 
-          <div className="flex items-start gap-4">
-            <div className="bg-vultrix-accent/20 p-3 rounded-lg">
-              <Printer className="text-vultrix-accent" size={24} />
+          <div className="flex items-start gap-6 relative z-10">
+            <div className="bg-gradient-to-br from-amber-500/30 to-orange-500/20 p-4 rounded-xl border border-amber-500/30">
+              <AlertTriangle className="text-amber-500" size={28} />
             </div>
+            
             <div className="flex-1">
-              <h3 className="text-xl font-bold text-white mb-2">
+              <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
                 Complete seu cadastro
+                <span className="text-sm font-normal text-amber-500 bg-amber-500/20 px-2 py-0.5 rounded">
+                  {onboardingStatus.hasProfile && onboardingStatus.hasPrinter ? "2/2" : 
+                   onboardingStatus.hasProfile || onboardingStatus.hasPrinter ? "1/2" : "0/2"}
+                </span>
               </h3>
+              
               <p className="text-vultrix-light/80 mb-4">
-                Cadastre sua primeira impressora para calcular custos reais e obter métricas precisas das suas vendas.
+                Configure seu perfil e cadastre suas impressoras para desbloquear todo o potencial do sistema.
               </p>
-              <div className="flex gap-3">
-                <Link
-                  href="/dashboard/impressoras"
-                  className="bg-vultrix-accent hover:bg-vultrix-accent/80 text-white font-bold py-2 px-6 rounded-lg transition-colors inline-flex items-center gap-2"
-                >
-                  <Printer size={18} />
-                  Cadastrar Impressora
-                </Link>
-                <Link
-                  href="/dashboard/perfil"
-                  className="bg-vultrix-gray hover:bg-vultrix-gray/80 text-white font-bold py-2 px-6 rounded-lg transition-colors inline-flex items-center gap-2"
-                >
-                  <User size={18} />
-                  Configurar Perfil
-                </Link>
+
+              {/* Progress Checklist */}
+              <div className="space-y-2 mb-5">
+                <div className="flex items-center gap-3">
+                  {onboardingStatus.hasProfile ? (
+                    <CheckCircle2 className="text-green-500" size={20} />
+                  ) : (
+                    <Circle className="text-vultrix-light/30" size={20} />
+                  )}
+                  <span className={`text-sm ${onboardingStatus.hasProfile ? "text-green-500 font-medium" : "text-vultrix-light/70"}`}>
+                    Perfil configurado
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  {onboardingStatus.hasPrinter ? (
+                    <CheckCircle2 className="text-green-500" size={20} />
+                  ) : (
+                    <Circle className="text-vultrix-light/30" size={20} />
+                  )}
+                  <span className={`text-sm ${onboardingStatus.hasPrinter ? "text-green-500 font-medium" : "text-vultrix-light/70"}`}>
+                    Impressora cadastrada
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-3">
+                {!onboardingStatus.hasProfile && (
+                  <Link
+                    href="/dashboard/perfil"
+                    className="bg-gradient-to-r from-vultrix-accent to-purple-600 hover:from-vultrix-accent/80 hover:to-purple-600/80 text-white font-bold py-2.5 px-6 rounded-lg transition-all inline-flex items-center gap-2 shadow-lg shadow-vultrix-accent/20"
+                  >
+                    <User size={18} />
+                    Configurar Perfil
+                  </Link>
+                )}
+                
+                {!onboardingStatus.hasPrinter && (
+                  <Link
+                    href="/dashboard/impressoras"
+                    className={`${
+                      onboardingStatus.hasProfile
+                        ? "bg-gradient-to-r from-vultrix-accent to-purple-600 hover:from-vultrix-accent/80 hover:to-purple-600/80 shadow-lg shadow-vultrix-accent/20"
+                        : "bg-vultrix-gray hover:bg-vultrix-gray/80"
+                    } text-white font-bold py-2.5 px-6 rounded-lg transition-all inline-flex items-center gap-2`}
+                  >
+                    <Printer size={18} />
+                    Cadastrar Impressora
+                  </Link>
+                )}
+
+                {onboardingStatus.hasProfile && onboardingStatus.hasPrinter && (
+                  <div className="flex items-center gap-2 text-green-500 font-semibold">
+                    <CheckCircle2 size={20} />
+                    Tudo pronto! Você pode dispensar este banner.
+                  </div>
+                )}
               </div>
             </div>
           </div>
