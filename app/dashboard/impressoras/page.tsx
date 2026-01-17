@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
-import { usePrinterModels } from "@/lib/hooks/usePrinterModels";
+import { usePrinterModelSearch } from "@/lib/hooks/usePrinterModelSearch";
+import { useUserCostSettings, calcEnergyCostPerHour } from "@/lib/hooks/useUserCostSettings";
 import { useOnboardingStatus } from "@/lib/hooks/useOnboardingStatus";
 import {
   Printer,
@@ -26,6 +27,7 @@ import {
   Cpu,
   Flame,
   Droplet,
+  ExternalLink,
 } from "lucide-react";
 
 type PrinterData = {
@@ -47,8 +49,16 @@ type PrinterModel = {
   id: string;
   brand: string;
   model: string;
-  avg_watts: number;
-  notes?: string;
+  avg_watts: number | null;
+  notes?: string | null;
+};
+
+type FormErrors = {
+  name?: string;
+  power_watts_default?: string;
+  brand?: string;
+  model?: string;
+  general?: string;
 };
 
 type QuickPreset = {
@@ -97,19 +107,21 @@ const QUICK_PRESETS: QuickPreset[] = [
 
 export default function ImpressorasPage() {
   const { user } = useAuth();
-  const { models, loading: modelsLoading } = usePrinterModels();
   const { refresh: refreshOnboarding } = useOnboardingStatus();
+  const { kwhCost, loading: costLoading } = useUserCostSettings();
   
   const [printers, setPrinters] = useState<PrinterData[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<"model" | "quick" | "manual">("model");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
   
   // Model selector state
   const [searchQuery, setSearchQuery] = useState("");
+  const { results: filteredModels, loading: searchLoading } = usePrinterModelSearch(searchQuery);
   const [selectedModel, setSelectedModel] = useState<PrinterModel | null>(null);
-  const [filteredModels, setFilteredModels] = useState<PrinterModel[]>([]);
   
   // Quick preset state
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
@@ -125,27 +137,18 @@ export default function ImpressorasPage() {
     active: true,
   });
 
+  // Real-time cost preview
+  const energyCostPreview = calcEnergyCostPerHour(
+    formData.power_watts_default || 0,
+    kwhCost
+  );
+
   useEffect(() => {
     if (user) {
       loadPrinters();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
-
-  useEffect(() => {
-    if (models && searchQuery.length >= 2) {
-      const filtered = models.filter(
-        (m) =>
-          m.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          m.model.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setFilteredModels(filtered.slice(0, 10));
-    } else if (models && searchQuery.length === 0) {
-      // Show top suggestions
-      setFilteredModels(models.slice(0, 5));
-    } else {
-      setFilteredModels([]);
-    }
-  }, [searchQuery, models]);
 
   const loadPrinters = async () => {
     try {
@@ -172,6 +175,7 @@ export default function ImpressorasPage() {
     setSelectedModel(null);
     setSelectedPreset(null);
     setSearchQuery("");
+    setFormErrors({});
     setFormData({
       name: "",
       brand: "",
@@ -188,17 +192,48 @@ export default function ImpressorasPage() {
     setEditingId(printer.id);
     setModalMode("manual");
     setFormData(printer);
+    setFormErrors({});
     setShowModal(true);
+  };
+
+  const validateForm = (): boolean => {
+    const errors: FormErrors = {};
+
+    // Name obrigatório
+    if (!formData.name || !formData.name.trim()) {
+      errors.name = "Nome da impressora é obrigatório";
+    }
+
+    // Power watts obrigatório e > 0
+    if (!formData.power_watts_default || formData.power_watts_default <= 0) {
+      errors.power_watts_default = "Consumo deve ser maior que zero";
+    }
+
+    // Brand/Model: se tiver um, exigir ambos (opcional)
+    const hasBrand = formData.brand && formData.brand.trim();
+    const hasModel = formData.model && formData.model.trim();
+    
+    if (hasBrand && !hasModel) {
+      errors.model = "Informe o modelo ou deixe marca vazia";
+    }
+    
+    if (hasModel && !hasBrand) {
+      errors.brand = "Informe a marca ou deixe modelo vazio";
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleSelectModel = (model: PrinterModel) => {
     setSelectedModel(model);
+    setFormErrors({});
     setFormData({
       ...formData,
       name: `${model.brand} ${model.model}`,
       brand: model.brand,
       model: model.model,
-      power_watts_default: model.avg_watts,
+      power_watts_default: model.avg_watts || 200,
       notes: model.notes || "",
       printer_model_id: model.id,
     });
@@ -209,6 +244,7 @@ export default function ImpressorasPage() {
     if (!preset) return;
 
     setSelectedPreset(presetId);
+    setFormErrors({});
     setFormData({
       ...formData,
       name: `Minha ${preset.name}`,
@@ -218,12 +254,22 @@ export default function ImpressorasPage() {
     });
   };
 
-  const handleSave = async () => {
+  const handleSave = async (e?: React.FormEvent) => {
+    // Prevent form submission
+    if (e) {
+      e.preventDefault();
+    }
+
+    // Clear previous errors
+    setFormErrors({});
+
+    // Validate
+    if (!validateForm()) {
+      return;
+    }
+
     try {
-      if (!formData.name || formData.power_watts_default! <= 0) {
-        alert("Preencha o nome e o consumo (watts) corretamente");
-        return;
-      }
+      setSaving(true);
 
       if (editingId) {
         // Update
@@ -281,24 +327,55 @@ export default function ImpressorasPage() {
       }
 
       await loadPrinters();
+      
+      // SUCCESS: Show feedback and close modal
+      const energyCost = calcEnergyCostPerHour(formData.power_watts_default!, kwhCost);
+      alert(
+        `✅ Impressora ${editingId ? 'atualizada' : 'cadastrada'} com sucesso!\n\n` +
+        `💡 Energia estimada: R$ ${energyCost.toFixed(2)}/h\n` +
+        `(Baseado em ${formData.power_watts_default}W e R$ ${kwhCost.toFixed(2)}/kWh)`
+      );
+      
       setShowModal(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao salvar impressora:", error);
-      alert("Erro ao salvar impressora");
+      
+      // ERROR: Keep modal open and show error
+      setFormErrors({
+        general: error.message || "Erro ao salvar impressora. Tente novamente.",
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
   const setDefaultPrinter = async (printerId: string) => {
     try {
-      const { error } = await supabase.rpc("set_default_printer", {
-        p_printer_id: printerId,
-      });
+      // Primeiro, remove o default de todas as impressoras do usuário
+      const { error: removeError } = await supabase
+        .from("printers")
+        .update({ is_default: false })
+        .eq("user_id", user!.id);
 
-      if (error) throw error;
+      if (removeError) throw removeError;
+
+      // Depois, define a impressora selecionada como padrão
+      const { error: setError } = await supabase
+        .from("printers")
+        .update({ is_default: true })
+        .eq("id", printerId)
+        .eq("user_id", user!.id);
+
+      if (setError) throw setError;
+
       await loadPrinters();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao definir impressora padrão:", error);
-      alert("Erro ao definir impressora padrão");
+      
+      // Show error to user
+      setFormErrors({
+        general: error.message || "Erro ao definir impressora padrão",
+      });
     }
   };
 
@@ -488,6 +565,25 @@ export default function ImpressorasPage() {
                     {printer.power_watts_default}W
                   </span>
                 </div>
+                
+                {/* Energy Cost */}
+                {printer.machine_hour_cost_override ? (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-lg">💰</span>
+                    <span className="text-vultrix-light/70">Custo/h (override):</span>
+                    <span className="text-green-400 font-bold ml-auto">
+                      R$ {printer.machine_hour_cost_override.toFixed(2)}/h
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-lg">💡</span>
+                    <span className="text-vultrix-light/70">Energia:</span>
+                    <span className="text-green-400 font-bold ml-auto">
+                      R$ {calcEnergyCostPerHour(printer.power_watts_default, kwhCost).toFixed(2)}/h
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Actions */}
@@ -549,7 +645,12 @@ export default function ImpressorasPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            onClick={() => setShowModal(false)}
+            onClick={(e) => {
+              // Prevent closing during save
+              if (!saving) {
+                setShowModal(false);
+              }
+            }}
           >
             <motion.div
               initial={{ scale: 0.95, y: 20 }}
@@ -564,8 +665,14 @@ export default function ImpressorasPage() {
                   {editingId ? "Editar Impressora" : "Nova Impressora"}
                 </h2>
                 <button
-                  onClick={() => setShowModal(false)}
-                  className="text-vultrix-light/60 hover:text-white transition-colors"
+                  onClick={() => {
+                    if (!saving) {
+                      setShowModal(false);
+                    }
+                  }}
+                  disabled={saving}
+                  className="text-vultrix-light/60 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  title={saving ? "Salvando..." : "Fechar"}
                 >
                   <X size={24} />
                 </button>
@@ -635,9 +742,10 @@ export default function ImpressorasPage() {
 
                       {/* Model suggestions */}
                       <div className="space-y-2 max-h-96 overflow-y-auto">
-                        {modelsLoading ? (
+                        {searchLoading ? (
                           <div className="text-center py-8">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-vultrix-accent mx-auto"></div>
+                            <p className="text-vultrix-light/60 text-sm mt-2">Buscando modelos...</p>
                           </div>
                         ) : filteredModels.length > 0 ? (
                           filteredModels.map((model) => (
@@ -658,7 +766,7 @@ export default function ImpressorasPage() {
                                   )}
                                 </div>
                                 <div className="bg-yellow-500/20 text-yellow-500 px-3 py-1 rounded-full text-sm font-semibold">
-                                  {model.avg_watts}W
+                                  {model.avg_watts || "?"}W
                                 </div>
                               </div>
                             </button>
@@ -726,15 +834,24 @@ export default function ImpressorasPage() {
                       <div className="flex gap-3">
                         <button
                           onClick={() => setSelectedModel(null)}
-                          className="flex-1 bg-vultrix-gray hover:bg-vultrix-gray/80 text-white font-semibold py-3 px-6 rounded-lg transition-all"
+                          disabled={saving}
+                          className="flex-1 bg-vultrix-gray hover:bg-vultrix-gray/80 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-all"
                         >
                           Voltar
                         </button>
                         <button
                           onClick={handleSave}
-                          className="flex-1 bg-gradient-to-r from-vultrix-accent to-purple-600 hover:from-vultrix-accent/80 hover:to-purple-600/80 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg shadow-vultrix-accent/20"
+                          disabled={saving}
+                          className="flex-1 bg-gradient-to-r from-vultrix-accent to-purple-600 hover:from-vultrix-accent/80 hover:to-purple-600/80 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg shadow-vultrix-accent/20 flex items-center justify-center gap-2"
                         >
-                          Salvar Impressora
+                          {saving ? (
+                            <>
+                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                              Salvando...
+                            </>
+                          ) : (
+                            "Salvar Impressora"
+                          )}
                         </button>
                       </div>
                     </div>
@@ -825,15 +942,24 @@ export default function ImpressorasPage() {
                       <div className="flex gap-3">
                         <button
                           onClick={() => setSelectedPreset(null)}
-                          className="flex-1 bg-vultrix-gray hover:bg-vultrix-gray/80 text-white font-semibold py-3 px-6 rounded-lg transition-all"
+                          disabled={saving}
+                          className="flex-1 bg-vultrix-gray hover:bg-vultrix-gray/80 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-all"
                         >
                           Voltar
                         </button>
                         <button
                           onClick={handleSave}
-                          className="flex-1 bg-gradient-to-r from-vultrix-accent to-purple-600 hover:from-vultrix-accent/80 hover:to-purple-600/80 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg shadow-vultrix-accent/20"
+                          disabled={saving}
+                          className="flex-1 bg-gradient-to-r from-vultrix-accent to-purple-600 hover:from-vultrix-accent/80 hover:to-purple-600/80 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg shadow-vultrix-accent/20 flex items-center justify-center gap-2"
                         >
-                          Salvar Impressora
+                          {saving ? (
+                            <>
+                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                              Salvando...
+                            </>
+                          ) : (
+                            "Salvar Impressora"
+                          )}
                         </button>
                       </div>
                     </div>
@@ -844,6 +970,17 @@ export default function ImpressorasPage() {
               {/* Mode: Manual */}
               {modalMode === "manual" && (
                 <div className="space-y-4">
+                  {/* General Error */}
+                  {formErrors.general && (
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-red-500 font-semibold">Erro ao salvar</p>
+                        <p className="text-red-400 text-sm mt-1">{formErrors.general}</p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2">
                       <label className="block text-sm font-semibold text-white mb-2">
@@ -852,12 +989,23 @@ export default function ImpressorasPage() {
                       <input
                         type="text"
                         value={formData.name}
-                        onChange={(e) =>
-                          setFormData({ ...formData, name: e.target.value })
-                        }
-                        className="w-full bg-vultrix-dark border border-vultrix-light/20 rounded-lg py-3 px-4 text-white focus:outline-none focus:border-vultrix-accent"
+                        onChange={(e) => {
+                          setFormData({ ...formData, name: e.target.value });
+                          if (formErrors.name) setFormErrors({ ...formErrors, name: undefined });
+                        }}
+                        className={`w-full bg-vultrix-dark border rounded-lg py-3 px-4 text-white focus:outline-none ${
+                          formErrors.name
+                            ? "border-red-500 focus:border-red-500"
+                            : "border-vultrix-light/20 focus:border-vultrix-accent"
+                        }`}
                         placeholder="Ex: Bambu Lab A1"
                       />
+                      {formErrors.name && (
+                        <p className="text-red-400 text-sm mt-1 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          {formErrors.name}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -867,12 +1015,23 @@ export default function ImpressorasPage() {
                       <input
                         type="text"
                         value={formData.brand || ""}
-                        onChange={(e) =>
-                          setFormData({ ...formData, brand: e.target.value })
-                        }
-                        className="w-full bg-vultrix-dark border border-vultrix-light/20 rounded-lg py-3 px-4 text-white focus:outline-none focus:border-vultrix-accent"
+                        onChange={(e) => {
+                          setFormData({ ...formData, brand: e.target.value });
+                          if (formErrors.brand) setFormErrors({ ...formErrors, brand: undefined });
+                        }}
+                        className={`w-full bg-vultrix-dark border rounded-lg py-3 px-4 text-white focus:outline-none ${
+                          formErrors.brand
+                            ? "border-red-500 focus:border-red-500"
+                            : "border-vultrix-light/20 focus:border-vultrix-accent"
+                        }`}
                         placeholder="Ex: Bambu Lab"
                       />
+                      {formErrors.brand && (
+                        <p className="text-red-400 text-sm mt-1 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          {formErrors.brand}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -882,12 +1041,23 @@ export default function ImpressorasPage() {
                       <input
                         type="text"
                         value={formData.model || ""}
-                        onChange={(e) =>
-                          setFormData({ ...formData, model: e.target.value })
-                        }
-                        className="w-full bg-vultrix-dark border border-vultrix-light/20 rounded-lg py-3 px-4 text-white focus:outline-none focus:border-vultrix-accent"
+                        onChange={(e) => {
+                          setFormData({ ...formData, model: e.target.value });
+                          if (formErrors.model) setFormErrors({ ...formErrors, model: undefined });
+                        }}
+                        className={`w-full bg-vultrix-dark border rounded-lg py-3 px-4 text-white focus:outline-none ${
+                          formErrors.model
+                            ? "border-red-500 focus:border-red-500"
+                            : "border-vultrix-light/20 focus:border-vultrix-accent"
+                        }`}
                         placeholder="Ex: A1 Mini"
                       />
+                      {formErrors.model && (
+                        <p className="text-red-400 text-sm mt-1 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          {formErrors.model}
+                        </p>
+                      )}
                     </div>
 
                     <div className="col-span-2">
@@ -897,15 +1067,54 @@ export default function ImpressorasPage() {
                       <input
                         type="number"
                         value={formData.power_watts_default}
-                        onChange={(e) =>
+                        onChange={(e) => {
                           setFormData({
                             ...formData,
                             power_watts_default: Number(e.target.value),
-                          })
-                        }
-                        className="w-full bg-vultrix-dark border border-vultrix-light/20 rounded-lg py-3 px-4 text-white focus:outline-none focus:border-vultrix-accent"
+                          });
+                          if (formErrors.power_watts_default) {
+                            setFormErrors({ ...formErrors, power_watts_default: undefined });
+                          }
+                        }}
+                        className={`w-full bg-vultrix-dark border rounded-lg py-3 px-4 text-white focus:outline-none ${
+                          formErrors.power_watts_default
+                            ? "border-red-500 focus:border-red-500"
+                            : "border-vultrix-light/20 focus:border-vultrix-accent"
+                        }`}
                         placeholder="Ex: 150"
                       />
+                      {formErrors.power_watts_default && (
+                        <p className="text-red-400 text-sm mt-1 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          {formErrors.power_watts_default}
+                        </p>
+                      )}
+                      
+                      {/* Real-time cost preview */}
+                      {!costLoading && energyCostPreview > 0 && (
+                        <div className="mt-2 bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+                          <p className="text-green-400 text-sm font-semibold flex items-center gap-2">
+                            <span className="text-base">💡</span>
+                            Energia estimada: R$ {energyCostPreview.toFixed(2)}/h
+                          </p>
+                          <p className="text-green-400/70 text-xs mt-1">
+                            Baseado em R$ {kwhCost.toFixed(2)}/kWh
+                          </p>
+                        </div>
+                      )}
+                      
+                      {!costLoading && kwhCost === 0.95 && (
+                        <div className="mt-2 bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                          <p className="text-blue-400 text-xs flex items-center gap-2">
+                            <AlertCircle className="w-3 h-3" />
+                            Usando custo padrão. 
+                            <a href="/dashboard/perfil" className="underline inline-flex items-center gap-1 hover:text-blue-300">
+                              Configurar no perfil
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </p>
+                        </div>
+                      )}
                     </div>
 
                     <div className="col-span-2">
@@ -957,15 +1166,24 @@ export default function ImpressorasPage() {
                   <div className="flex gap-3 pt-4">
                     <button
                       onClick={() => setShowModal(false)}
-                      className="flex-1 bg-vultrix-gray hover:bg-vultrix-gray/80 text-white font-semibold py-3 px-6 rounded-lg transition-all"
+                      disabled={saving}
+                      className="flex-1 bg-vultrix-gray hover:bg-vultrix-gray/80 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-all"
                     >
                       Cancelar
                     </button>
                     <button
                       onClick={handleSave}
-                      className="flex-1 bg-gradient-to-r from-vultrix-accent to-purple-600 hover:from-vultrix-accent/80 hover:to-purple-600/80 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg shadow-vultrix-accent/20"
+                      disabled={saving}
+                      className="flex-1 bg-gradient-to-r from-vultrix-accent to-purple-600 hover:from-vultrix-accent/80 hover:to-purple-600/80 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg shadow-vultrix-accent/20 flex items-center justify-center gap-2"
                     >
-                      {editingId ? "Atualizar" : "Salvar"}
+                      {saving ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                          {editingId ? "Atualizando..." : "Salvando..."}
+                        </>
+                      ) : (
+                        editingId ? "Atualizar" : "Salvar"
+                      )}
                     </button>
                   </div>
                 </div>
