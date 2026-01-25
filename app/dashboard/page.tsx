@@ -105,9 +105,14 @@ export default function DashboardPage() {
     try {
       setTipLoading(true);
       const response = await fetch('/api/maker-tip');
-      const data = await response.json();
-      setMakerTip(data.tip);
+      if (response.ok) {
+        const data = await response.json();
+        setMakerTip(data.tip);
+      } else {
+        throw new Error('API error');
+      }
     } catch (error) {
+      console.warn('Erro ao carregar dica, usando fallback');
       setMakerTip('💡 Continue focado no seu negócio maker! Cada impressão é um passo para o sucesso.');
     } finally {
       setTipLoading(false);
@@ -122,6 +127,12 @@ export default function DashboardPage() {
   }, [user]);
 
   const loadMetrics = async () => {
+    if (!user?.id) {
+      console.warn("Usuário não autenticado");
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -130,6 +141,8 @@ export default function DashboardPage() {
       const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
       const dataInicio = primeiroDiaMes.toISOString().split("T")[0];
       const dataFim = ultimoDiaMes.toISOString().split("T")[0];
+
+      console.log("📊 Carregando métricas para:", { userId: user.id, dataInicio, dataFim });
 
       // Inicializar balance
       let balance: BalanceData = {
@@ -140,53 +153,57 @@ export default function DashboardPage() {
         receita_liquida: 0,
       };
       
-      // Tentar usar função RPC, senão calcular manualmente
+      // Calcular valores manualmente (mais confiável)
       try {
-        const { data: balanceData, error: balanceError } = await supabase.rpc(
-          "calculate_balance",
-          {
-            p_user_id: user!.id,
-            p_data_inicio: dataInicio,
-            p_data_fim: dataFim,
-          },
-        );
-
-        if (balanceError) {
-          throw balanceError;
-        }
-        balance = balanceData?.[0] || balance;
-      } catch (rpcError) {
-        console.warn("Calculando saldo manualmente...");
-        
-        // Buscar vendas do mês
-        const { data: vendasData } = await supabase
+        // Buscar vendas do mês (suporta ambos os campos: sale_price e valor_venda)
+        const { data: vendasData, error: vendasErr } = await supabase
           .from("sales")
-          .select("sale_price, quantity")
-          .eq("user_id", user!.id)
+          .select("sale_price, valor_venda, quantity")
+          .eq("user_id", user.id)
           .gte("data", dataInicio)
           .lte("data", dataFim);
         
-        const totalVendasCalc = vendasData?.reduce((sum, v) => sum + (v.sale_price * v.quantity), 0) || 0;
+        if (vendasErr) {
+          console.error("Erro ao buscar vendas:", vendasErr);
+        }
+        
+        const totalVendasCalc = vendasData?.reduce((sum, v) => {
+          const preco = v.sale_price || v.valor_venda || 0;
+          const qty = v.quantity || 1;
+          return sum + (preco * qty);
+        }, 0) || 0;
+        
+        console.log("💰 Vendas encontradas:", vendasData?.length || 0, "Total:", totalVendasCalc);
         
         // Buscar aportes do mês (tabela capital_contributions)
-        const { data: aportesData } = await supabase
+        const { data: aportesData, error: aportesErr } = await supabase
           .from("capital_contributions")
           .select("valor")
-          .eq("user_id", user!.id)
+          .eq("user_id", user.id)
           .gte("data", dataInicio)
           .lte("data", dataFim);
         
-        const totalAportes = aportesData?.reduce((sum, a) => sum + a.valor, 0) || 0;
+        if (aportesErr) {
+          console.error("Erro ao buscar aportes:", aportesErr);
+        }
+        
+        const totalAportes = aportesData?.reduce((sum, a) => sum + (a.valor || 0), 0) || 0;
+        console.log("📥 Aportes encontrados:", aportesData?.length || 0, "Total:", totalAportes);
         
         // Buscar despesas do mês
-        const { data: despesasData } = await supabase
+        const { data: despesasData, error: despesasErr } = await supabase
           .from("expenses")
           .select("valor")
-          .eq("user_id", user!.id)
+          .eq("user_id", user.id)
           .gte("data", dataInicio)
           .lte("data", dataFim);
         
-        const totalDespesas = despesasData?.reduce((sum, d) => sum + d.valor, 0) || 0;
+        if (despesasErr) {
+          console.error("Erro ao buscar despesas:", despesasErr);
+        }
+        
+        const totalDespesas = despesasData?.reduce((sum, d) => sum + (d.valor || 0), 0) || 0;
+        console.log("💸 Despesas encontradas:", despesasData?.length || 0, "Total:", totalDespesas);
         
         balance = {
           total_vendas: totalVendasCalc,
@@ -195,32 +212,47 @@ export default function DashboardPage() {
           saldo_final: totalVendasCalc + totalAportes - totalDespesas,
           receita_liquida: totalVendasCalc - totalDespesas,
         };
+        
+        console.log("📈 Balance calculado:", balance);
+      } catch (calcError) {
+        console.error("Erro ao calcular saldo:", calcError);
       }
 
-      // Buscar vendas do mês
-      const { data: salesData, error: salesError } = await supabase
-        .from("sales")
-        .select(
-          `
-          *,
-          products (
-            nome,
-            filamento_id,
-            custo_total,
-            filaments (
+      // Buscar vendas do mês com tratamento de erro
+      let salesData: any[] = [];
+      let totalVendas = 0;
+      
+      try {
+        const { data, error: salesError } = await supabase
+          .from("sales")
+          .select(
+            `
+            *,
+            products (
               nome,
-              marca
+              filamento_id,
+              custo_total,
+              filaments (
+                nome,
+                marca
+              )
             )
+          `,
           )
-        `,
-        )
-        .eq("user_id", user!.id)
-        .gte("data", dataInicio)
-        .lte("data", dataFim);
+          .eq("user_id", user.id)
+          .gte("data", dataInicio)
+          .lte("data", dataFim);
 
-      if (salesError) throw salesError;
-
-      const totalVendas = salesData?.length || 0;
+        if (salesError) {
+          console.error("Erro ao buscar vendas detalhadas:", salesError);
+        } else {
+          salesData = data || [];
+          totalVendas = salesData.length;
+          console.log("🛒 Vendas detalhadas:", totalVendas);
+        }
+      } catch (salesErr) {
+        console.error("Erro crítico ao buscar vendas:", salesErr);
+      }
 
       // Produto mais vendido
       const produtoCount: Record<string, { nome: string; count: number }> = {};
@@ -247,70 +279,98 @@ export default function DashboardPage() {
           : null;
 
       // Filamento mais consumido
-      const { data: logsData } = await supabase
-        .from("filament_consumption_logs")
-        .select(
-          `
-          quantidade_consumida,
-          filaments (
-            nome,
-            marca
-          )
-        `,
-        )
-        .eq("user_id", user!.id)
-        .gte("created_at", primeiroDiaMes.toISOString())
-        .lte("created_at", ultimoDiaMes.toISOString());
-
-      const filamentoConsumo: Record<
-        string,
-        { nome: string; marca: string; consumo: number }
-      > = {};
-      logsData?.forEach((log: any) => {
-        const filamento = Array.isArray(log.filaments)
-          ? log.filaments[0]
-          : log.filaments;
-        const key = `${filamento?.nome}-${filamento?.marca}`;
-        if (!filamentoConsumo[key]) {
-          filamentoConsumo[key] = {
-            nome: filamento?.nome || "",
-            marca: filamento?.marca || "",
-            consumo: 0,
-          };
-        }
-        filamentoConsumo[key].consumo += log.quantidade_consumida;
-      });
-
-      const filamentoMaisConsumido =
-        Object.values(filamentoConsumo).length > 0
-          ? Object.values(filamentoConsumo).reduce(
-              (max, f) => (f.consumo > max.consumo ? f : max),
-              { nome: "", marca: "", consumo: 0 },
+      let filamentoMaisConsumido: { nome: string; marca: string; consumo: number } | null = null;
+      try {
+        const { data: logsData, error: logsError } = await supabase
+          .from("filament_consumption_logs")
+          .select(
+            `
+            quantidade_consumida,
+            filaments (
+              nome,
+              marca
             )
-          : null;
+          `,
+          )
+          .eq("user_id", user.id)
+          .gte("created_at", primeiroDiaMes.toISOString())
+          .lte("created_at", ultimoDiaMes.toISOString());
+
+        if (logsError) {
+          console.warn("Tabela filament_consumption_logs pode não existir:", logsError.message);
+        } else if (logsData && logsData.length > 0) {
+          const filamentoConsumo: Record<
+            string,
+            { nome: string; marca: string; consumo: number }
+          > = {};
+          logsData.forEach((log: any) => {
+            const filamento = Array.isArray(log.filaments)
+              ? log.filaments[0]
+              : log.filaments;
+            const key = `${filamento?.nome}-${filamento?.marca}`;
+            if (!filamentoConsumo[key]) {
+              filamentoConsumo[key] = {
+                nome: filamento?.nome || "",
+                marca: filamento?.marca || "",
+                consumo: 0,
+              };
+            }
+            filamentoConsumo[key].consumo += log.quantidade_consumida || 0;
+          });
+
+          filamentoMaisConsumido =
+            Object.values(filamentoConsumo).length > 0
+              ? Object.values(filamentoConsumo).reduce(
+                  (max, f) => (f.consumo > max.consumo ? f : max),
+                  { nome: "", marca: "", consumo: 0 },
+                )
+              : null;
+        }
+      } catch (logsErr) {
+        console.warn("Erro ao buscar consumo de filamentos:", logsErr);
+      }
 
       // Contagem de produtos, filamentos e impressoras
-      const { count: produtosCount } = await supabase
-        .from("products")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user!.id);
+      let produtosCount = 0;
+      let filamentosCount = 0;
+      let impressorasCount = 0;
+      let estoqueBaixoCount = 0;
 
-      const { count: filamentosCount } = await supabase
-        .from("filaments")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user!.id);
+      try {
+        const { count: pCount } = await supabase
+          .from("products")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id);
+        produtosCount = pCount || 0;
+        console.log("📦 Produtos:", produtosCount);
+      } catch (e) { console.warn("Erro ao contar produtos"); }
 
-      const { count: impressorasCount } = await supabase
-        .from("printers")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user!.id);
+      try {
+        const { count: fCount } = await supabase
+          .from("filaments")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id);
+        filamentosCount = fCount || 0;
+        console.log("🧵 Filamentos:", filamentosCount);
+      } catch (e) { console.warn("Erro ao contar filamentos"); }
 
-      // Filamentos com estoque baixo (menos de 200g)
-      const { count: estoqueBaixoCount } = await supabase
-        .from("filaments")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user!.id)
-        .lt("peso_disponivel", 200);
+      try {
+        const { count: iCount } = await supabase
+          .from("printers")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id);
+        impressorasCount = iCount || 0;
+        console.log("🖨️ Impressoras:", impressorasCount);
+      } catch (e) { console.warn("Erro ao contar impressoras"); }
+
+      try {
+        const { count: ebCount } = await supabase
+          .from("filaments")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .lt("peso_disponivel", 200);
+        estoqueBaixoCount = ebCount || 0;
+      } catch (e) { console.warn("Erro ao contar estoque baixo"); }
 
       // Vendas por dia (últimos 7 dias)
       const vendasPorDia: Array<{ data: string; valor: number }> = [];
@@ -321,7 +381,7 @@ export default function DashboardPage() {
 
         const vendasDoDia = salesData?.filter((s) => s.data === diaStr) || [];
         const valorDia = vendasDoDia.reduce(
-          (sum, s) => sum + s.sale_price * s.quantity,
+          (sum, s) => sum + ((s.sale_price || s.valor_venda || 0) * (s.quantity || 1)),
           0,
         );
 
@@ -334,16 +394,18 @@ export default function DashboardPage() {
         });
       }
 
+      console.log("✅ Métricas carregadas com sucesso!");
+
       setMetrics({
         balance,
         totalVendas,
-        totalProdutos: produtosCount || 0,
-        totalFilamentos: filamentosCount || 0,
-        totalImpressoras: impressorasCount || 0,
+        totalProdutos: produtosCount,
+        totalFilamentos: filamentosCount,
+        totalImpressoras: impressorasCount,
         produtoMaisVendido,
         filamentoMaisConsumido,
         vendasPorDia,
-        filamentosEstoqueBaixo: estoqueBaixoCount || 0,
+        filamentosEstoqueBaixo: estoqueBaixoCount,
       });
     } catch (error: any) {
       console.error("Erro ao carregar métricas:", error?.message || error?.details || JSON.stringify(error) || error);

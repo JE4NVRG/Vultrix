@@ -100,6 +100,18 @@ export default function ProdutosPage() {
   // Products List
   const [products, setProducts] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  
+  // Estado de edição de nome
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+  
+  // Estado de busca
+  const [searchTerm, setSearchTerm] = useState("");
+  
+  // Produtos filtrados por busca
+  const filteredProducts = products.filter(product =>
+    product.nome.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const loadProducts = async () => {
     try {
@@ -778,17 +790,55 @@ export default function ProdutosPage() {
     }
   };
 
+  const handleEditName = (product: any) => {
+    setEditingProductId(product.id);
+    setEditingName(product.nome);
+  };
+
+  const handleSaveName = async (productId: string) => {
+    if (!editingName.trim()) {
+      alert("O nome não pode estar vazio");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("products")
+        .update({ nome: editingName.trim() })
+        .eq("id", productId);
+
+      if (error) throw error;
+
+      // Atualizar lista local
+      setProducts(products.map(p => 
+        p.id === productId ? { ...p, nome: editingName.trim() } : p
+      ));
+      setEditingProductId(null);
+      setEditingName("");
+    } catch (err: any) {
+      console.error("Erro ao atualizar nome:", err);
+      alert(`Erro ao atualizar nome: ${err.message}`);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingProductId(null);
+    setEditingName("");
+  };
+
   return (
     <div className="min-h-screen bg-black text-white">
       <main className="container mx-auto px-4 py-8">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
               Produtos
             </h1>
             <p className="text-gray-400 mt-2">
-              Gerencie seus produtos impressos em 3D
+              {products.length > 0 
+                ? `${products.length} produto${products.length > 1 ? 's' : ''} cadastrado${products.length > 1 ? 's' : ''}`
+                : 'Gerencie seus produtos impressos em 3D'}
             </p>
           </div>
 
@@ -800,6 +850,34 @@ export default function ProdutosPage() {
           </button>
         </div>
 
+        {/* Barra de Pesquisa */}
+        {products.length > 0 && (
+          <div className="mb-6">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="🔍 Pesquisar produtos por nome..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 pl-4 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            {searchTerm && (
+              <p className="text-gray-400 text-sm mt-2">
+                {filteredProducts.length} resultado{filteredProducts.length !== 1 ? 's' : ''} para "{searchTerm}"
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Products Grid */}
         {loadingProducts ? (
           <div className="text-center text-gray-400 py-12">
@@ -809,9 +887,13 @@ export default function ProdutosPage() {
           <div className="text-center text-gray-400 py-12">
             Nenhum produto cadastrado ainda.
           </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="text-center text-gray-400 py-12">
+            Nenhum produto encontrado para "{searchTerm}"
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {products.map((product) => (
+            {filteredProducts.map((product) => (
               <div
                 key={product.id}
                 className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden hover:border-purple-600 transition-colors"
@@ -828,7 +910,47 @@ export default function ProdutosPage() {
                 )}
 
                 <div className="p-6">
-                  <h3 className="text-xl font-bold mb-2">{product.nome}</h3>
+                  {/* Nome do Produto - Editável */}
+                  {editingProductId === product.id ? (
+                    <div className="mb-2">
+                      <input
+                        type="text"
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        className="w-full bg-zinc-800 border border-purple-500 rounded-lg px-3 py-2 text-white text-xl font-bold focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveName(product.id);
+                          if (e.key === 'Escape') handleCancelEdit();
+                        }}
+                      />
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={() => handleSaveName(product.id)}
+                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm"
+                        >
+                          ✓ Salvar
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 text-white rounded text-sm"
+                        >
+                          ✕ Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between mb-2 group">
+                      <h3 className="text-xl font-bold">{product.nome}</h3>
+                      <button
+                        onClick={() => handleEditName(product)}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-purple-400 transition-all"
+                        title="Editar nome"
+                      >
+                        ✏️
+                      </button>
+                    </div>
+                  )}
                   {product.descricao && (
                     <p className="text-gray-400 text-sm mb-4">
                       {product.descricao}
@@ -860,6 +982,12 @@ export default function ProdutosPage() {
 
                   {/* Botões de Ação */}
                   <div className="flex gap-2 pt-4 border-t border-zinc-800">
+                    <button
+                      onClick={() => handleEditName(product)}
+                      className="flex-1 px-3 py-2 bg-purple-900/30 hover:bg-purple-900/50 text-purple-400 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      ✏️ Editar Nome
+                    </button>
                     <button
                       onClick={() => handleDeleteProduct(product.id)}
                       className="flex-1 px-3 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded-lg text-sm font-medium transition-colors"
