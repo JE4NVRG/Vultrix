@@ -872,7 +872,7 @@ export default function ProdutosPage() {
             </div>
             {searchTerm && (
               <p className="text-gray-400 text-sm mt-2">
-                {filteredProducts.length} resultado{filteredProducts.length !== 1 ? 's' : ''} para "{searchTerm}"
+                {filteredProducts.length} resultado{filteredProducts.length !== 1 ? 's' : ''} para &ldquo;{searchTerm}&rdquo;
               </p>
             )}
           </div>
@@ -889,7 +889,7 @@ export default function ProdutosPage() {
           </div>
         ) : filteredProducts.length === 0 ? (
           <div className="text-center text-gray-400 py-12">
-            Nenhum produto encontrado para "{searchTerm}"
+            Nenhum produto encontrado para &ldquo;{searchTerm}&rdquo;
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
