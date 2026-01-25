@@ -54,10 +54,10 @@ type DashboardMetrics = {
 
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
-  const { 
-    status: onboardingStatus, 
+  const {
+    status: onboardingStatus,
     loading: onboardingLoading,
-    dismiss 
+    dismiss,
   } = useOnboardingStatus();
 
   const [metrics, setMetrics] = useState<DashboardMetrics>({
@@ -76,7 +76,7 @@ export default function DashboardPage() {
 
   const [loading, setLoading] = useState(true);
   const [mesAtual] = useState(
-    new Date().toLocaleString("pt-BR", { month: "long", year: "numeric" })
+    new Date().toLocaleString("pt-BR", { month: "long", year: "numeric" }),
   );
 
   useEffect(() => {
@@ -100,7 +100,7 @@ export default function DashboardPage() {
           p_user_id: user!.id,
           p_data_inicio: primeiroDiaMes.toISOString().split("T")[0],
           p_data_fim: ultimoDiaMes.toISOString().split("T")[0],
-        }
+        },
       );
 
       if (balanceError) {
@@ -130,7 +130,7 @@ export default function DashboardPage() {
               marca
             )
           )
-        `
+        `,
         )
         .eq("user_id", user!.id)
         .gte("data", primeiroDiaMes.toISOString().split("T")[0])
@@ -155,11 +155,11 @@ export default function DashboardPage() {
           ? {
               nome: Object.values(produtoCount).reduce(
                 (max, p) => (p.count > max.count ? p : max),
-                { nome: "", count: 0 }
+                { nome: "", count: 0 },
               ).nome,
               quantidade: Object.values(produtoCount).reduce(
                 (max, p) => (p.count > max.count ? p : max),
-                { nome: "", count: 0 }
+                { nome: "", count: 0 },
               ).count,
             }
           : null;
@@ -174,7 +174,7 @@ export default function DashboardPage() {
             nome,
             marca
           )
-        `
+        `,
         )
         .eq("user_id", user!.id)
         .gte("created_at", primeiroDiaMes.toISOString())
@@ -203,7 +203,7 @@ export default function DashboardPage() {
         Object.values(filamentoConsumo).length > 0
           ? Object.values(filamentoConsumo).reduce(
               (max, f) => (f.consumo > max.consumo ? f : max),
-              { nome: "", marca: "", consumo: 0 }
+              { nome: "", marca: "", consumo: 0 },
             )
           : null;
 
@@ -217,7 +217,7 @@ export default function DashboardPage() {
         const vendasDoDia = salesData?.filter((s) => s.data === diaStr) || [];
         const valorDia = vendasDoDia.reduce(
           (sum, s) => sum + s.sale_price * s.quantity,
-          0
+          0,
         );
 
         vendasPorDia.push({
@@ -255,11 +255,12 @@ export default function DashboardPage() {
   }
 
   const maxVendaDia = Math.max(...metrics.vendasPorDia.map((v) => v.valor), 1);
-  
+
   // Banner logic: show if not complete AND not dismissed
-  const shouldShowBanner = !onboardingLoading && 
-                          !onboardingStatus.isComplete && 
-                          !onboardingStatus.isDismissed;
+  const shouldShowBanner =
+    !onboardingLoading &&
+    !onboardingStatus.isComplete &&
+    !onboardingStatus.isDismissed;
 
   // Get user initials for avatar fallback
   const getInitials = (name: string | null) => {
@@ -333,7 +334,7 @@ export default function DashboardPage() {
         >
           {/* Background decoration */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl"></div>
-          
+
           <button
             onClick={handleDismissBanner}
             className="absolute top-4 right-4 text-vultrix-light/60 hover:text-white transition-colors z-10"
@@ -346,18 +347,22 @@ export default function DashboardPage() {
             <div className="bg-gradient-to-br from-amber-500/30 to-orange-500/20 p-4 rounded-xl border border-amber-500/30">
               <AlertTriangle className="text-amber-500" size={28} />
             </div>
-            
+
             <div className="flex-1">
               <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
                 Complete seu cadastro
                 <span className="text-sm font-normal text-amber-500 bg-amber-500/20 px-2 py-0.5 rounded">
-                  {onboardingStatus.hasProfile && onboardingStatus.hasPrinter ? "2/2" : 
-                   onboardingStatus.hasProfile || onboardingStatus.hasPrinter ? "1/2" : "0/2"}
+                  {onboardingStatus.hasProfile && onboardingStatus.hasPrinter
+                    ? "2/2"
+                    : onboardingStatus.hasProfile || onboardingStatus.hasPrinter
+                      ? "1/2"
+                      : "0/2"}
                 </span>
               </h3>
-              
+
               <p className="text-vultrix-light/80 mb-4">
-                Configure seu perfil e cadastre suas impressoras para desbloquear todo o potencial do sistema.
+                Configure seu perfil e cadastre suas impressoras para
+                desbloquear todo o potencial do sistema.
               </p>
 
               {/* Progress Checklist */}
@@ -368,18 +373,22 @@ export default function DashboardPage() {
                   ) : (
                     <Circle className="text-vultrix-light/30" size={20} />
                   )}
-                  <span className={`text-sm ${onboardingStatus.hasProfile ? "text-green-500 font-medium" : "text-vultrix-light/70"}`}>
+                  <span
+                    className={`text-sm ${onboardingStatus.hasProfile ? "text-green-500 font-medium" : "text-vultrix-light/70"}`}
+                  >
                     Perfil configurado
                   </span>
                 </div>
-                
+
                 <div className="flex items-center gap-3">
                   {onboardingStatus.hasPrinter ? (
                     <CheckCircle2 className="text-green-500" size={20} />
                   ) : (
                     <Circle className="text-vultrix-light/30" size={20} />
                   )}
-                  <span className={`text-sm ${onboardingStatus.hasPrinter ? "text-green-500 font-medium" : "text-vultrix-light/70"}`}>
+                  <span
+                    className={`text-sm ${onboardingStatus.hasPrinter ? "text-green-500 font-medium" : "text-vultrix-light/70"}`}
+                  >
                     Impressora cadastrada
                   </span>
                 </div>
@@ -396,7 +405,7 @@ export default function DashboardPage() {
                     Configurar Perfil
                   </Link>
                 )}
-                
+
                 {!onboardingStatus.hasPrinter && (
                   <Link
                     href="/dashboard/impressoras"

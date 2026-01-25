@@ -84,17 +84,15 @@ export function useOnboardingStatus() {
 
     try {
       // Upsert settings with dismissed flag
-      const { error } = await supabase
-        .from("user_settings")
-        .upsert(
-          {
-            user_id: user.id,
-            onboarding_dismissed: true,
-          },
-          {
-            onConflict: "user_id",
-          }
-        );
+      const { error } = await supabase.from("user_settings").upsert(
+        {
+          user_id: user.id,
+          onboarding_dismissed: true,
+        },
+        {
+          onConflict: "user_id",
+        },
+      );
 
       if (error) throw error;
 

@@ -52,9 +52,11 @@ export function usePrinterModels() {
       // Set popular models
       if (data) {
         const popular = data.filter((m) =>
-          POPULAR_MODEL_IDS.some(
-            (pop) => `${m.brand} ${m.model}`.includes(pop.split(" ").slice(0, 2).join(" "))
-          )
+          POPULAR_MODEL_IDS.some((pop) =>
+            `${m.brand} ${m.model}`.includes(
+              pop.split(" ").slice(0, 2).join(" "),
+            ),
+          ),
         );
         setPopularModels(popular.slice(0, 8));
       }
@@ -102,13 +104,13 @@ export function usePrinterModels() {
     }
   };
 
-  return { 
-    models, 
+  return {
+    models,
     popularModels,
-    loading, 
+    loading,
     searching,
-    error, 
-    searchModels, 
-    refresh: loadModels 
+    error,
+    searchModels,
+    refresh: loadModels,
   };
 }

@@ -57,9 +57,11 @@ export function usePrinterModelSearch(query: string) {
 
         // Filter for popular models
         const popular = (data || []).filter((m) =>
-          POPULAR_MODEL_IDS.some(
-            (pop) => `${m.brand} ${m.model}`.toLowerCase().includes(pop.toLowerCase().split(" ").slice(0, 2).join(" "))
-          )
+          POPULAR_MODEL_IDS.some((pop) =>
+            `${m.brand} ${m.model}`
+              .toLowerCase()
+              .includes(pop.toLowerCase().split(" ").slice(0, 2).join(" ")),
+          ),
         );
 
         setResults(popular.length > 0 ? popular : (data || []).slice(0, 8));

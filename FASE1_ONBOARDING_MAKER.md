@@ -17,12 +17,14 @@ Execute as migrations na ordem:
 ## 📊 Estrutura de Dados
 
 ### `user_profile`
+
 - Identidade: display_name, handle, whatsapp, city, logo_url
 - Defaults operacionais: default_kwh_cost, default_profit_margin_percent
 - Toggles padrão: include_packaging, include_label, include_shipping
 - Auto-criado via trigger após signup
 
 ### `printers`
+
 - Dados: name, brand, model, notes
 - Energia: power_watts_default, kwh_cost_override
 - Custo: machine_hour_cost_override
@@ -30,6 +32,7 @@ Execute as migrations na ordem:
 - Opcional: printer_model_id (FK para catálogo)
 
 ### `printer_models` (catálogo público)
+
 - 20 modelos pré-cadastrados (Bambu Lab, Creality, Prusa, etc)
 - Campos: brand, model, category, avg_watts, peak_watts, notes
 - RLS: leitura pública para authenticated, modificação apenas service_role
@@ -37,11 +40,13 @@ Execute as migrations na ordem:
 ## 🎨 Componentes Criados
 
 ### `ModelSelector`
+
 - Busca typeahead em modelos do catálogo
 - Autopreenche marca, modelo, watts, notas
 - Dropdown com resultados filtrados
 
 ### `WattsEstimator`
+
 - Modal com 4 estimativas rápidas:
   - FDM básica sem cama: 80W
   - FDM com cama aquecida: 150W
@@ -50,23 +55,27 @@ Execute as migrations na ordem:
 - Aviso: "Recomendado medir com tomada medidora"
 
 ### Hook `usePrinterModels`
+
 - Carrega catálogo do Supabase
 - Função `searchModels(query)` para filtrar
 - Fallback silencioso se tabela não existir
 
 ### Hook `useOnboardingStatus`
+
 - Retorna: `{hasProfile, hasPrinter, profileCompleted}`
 - Usado no banner do dashboard
 
 ## 🚀 Telas Implementadas
 
 ### `/dashboard/perfil`
+
 - Bloco Identidade: nome, whatsapp, instagram, cidade, logo
 - Bloco Defaults: kWh (tooltip), margem %, toggles embalagem/etiqueta/envio
 - Ações: Salvar (marca profile_completed), Restaurar Padrões
 - Toast de confirmação
 
 ### `/dashboard/impressoras`
+
 - Lista em cards com badges (Padrão/Inativa)
 - Form inline com:
   1. **Model Selector** (busca no catálogo)
@@ -77,6 +86,7 @@ Execute as migrations na ordem:
 - Estado vazio com ícone e mensagem
 
 ### Dashboard com Banner
+
 - Exibe quando não há impressora cadastrada
 - CTAs: "Cadastrar Impressora" + "Configurar Perfil"
 - Pode ser fechado (state local)
@@ -84,6 +94,7 @@ Execute as migrations na ordem:
 ## 📝 Fluxo de Uso
 
 ### Novo Usuário
+
 1. Faz login → trigger cria `user_profile` com defaults
 2. Dashboard exibe banner de onboarding
 3. Clica "Cadastrar Impressora"
@@ -93,6 +104,7 @@ Execute as migrations na ordem:
 7. Salva → banner desaparece
 
 ### Usuário sem dados de consumo
+
 1. Abre "Nova Impressora"
 2. Clica "Não sei os watts"
 3. Seleciona "FDM com cama aquecida" → 150W preenchido
@@ -100,6 +112,7 @@ Execute as migrations na ordem:
 5. Salva (pode medir depois e editar)
 
 ### Cadastro Manual
+
 - Se modelo não estiver no catálogo
 - Preenche manualmente todos campos
 - Funciona normalmente sem printer_model_id

@@ -9,6 +9,7 @@
 **Causa:** O hook `usePrinterModels` estava retornando array sincronamente, mas a busca precisava ser assíncrona para consultar o Supabase.
 
 **Solução:**
+
 - ✅ Refatorado hook `usePrinterModels.ts` para:
   - Função `searchModels()` agora é **async** e retorna `Promise<PrinterModel[]>`
   - Query Supabase com `.or()` para buscar em brand e model
@@ -34,6 +35,7 @@
 **Causa:** Form submission padrão do browser não estava sendo prevenido, causando reload da página.
 
 **Solução:**
+
 - ✅ Modificado `handleSave()` para aceitar parâmetro `e?: React.FormEvent`
 - ✅ Adicionado `e.preventDefault()` no início da função
 - ✅ Validações retornam early com `setSaving(false)` para evitar fechar modal
@@ -51,23 +53,27 @@
 **Problema:** Usuário não via quanto custava por hora cada impressora.
 
 **Solução:**
+
 - ✅ Adicionado `loadUserSettings()` para buscar `custo_kwh` do user
 - ✅ State `kwh_cost` inicializado com 0.70 (média Brasil)
 - ✅ Criado helper `calculateHourlyCost(watts)`:
   ```typescript
-  (watts / 1000) * kwh_cost
+  (watts / 1000) * kwh_cost;
   ```
 - ✅ **Exibição no card da impressora:**
+
   ```
   💡 Custo/hora: R$ 0.15/h
   ```
+
   - Cor verde (`text-green-400`)
   - Fonte bold para destaque
 
 - ✅ **Feedback pós-cadastro:**
+
   ```
   ✅ Impressora cadastrada com sucesso!
-  
+
   💡 Custo estimado por hora: R$ 0.15/h
   (Baseado em 150W e R$ 0.70/kWh)
   ```
@@ -79,11 +85,13 @@
 ## 📊 Melhorias Adicionais Implementadas
 
 ### Performance
+
 - **Debounce de 300ms** na busca evita queries excessivos
 - **Limite de 20 resultados** mantém interface responsiva
 - Busca retorna array vazio se query < 2 caracteres
 
 ### UX/UI
+
 - **Loading states visuais:**
   - Spinner durante busca de modelos
   - Spinner nos botões durante salvamento
@@ -94,11 +102,13 @@
   - Feedback detalhado após sucesso
 
 ### Validações
+
 - Nome obrigatório (não pode ser vazio)
 - Consumo obrigatório (> 0 watts)
 - Mensagens de erro específicas para cada validação
 
 ### Fallback Inteligente
+
 - **8 modelos populares** carregados automaticamente:
   - Bambu Lab: A1 Mini, A1, P1S, X1C
   - Creality Ender 3 V2, Ender 3 S1
@@ -111,6 +121,7 @@
 ## 🧪 Como Testar
 
 ### Teste 1: Busca de Modelos
+
 1. Acesse `/dashboard/impressoras`
 2. Clique em "Escolher Modelo (Recomendado)"
 3. Veja os 8 modelos populares exibidos por padrão
@@ -119,6 +130,7 @@
 6. Digite rapidamente "Bam" → veja que apenas 1 query é feita (debounce)
 
 ### Teste 2: Modal Manual
+
 1. Clique em "Manual"
 2. Preencha nome: "Teste"
 3. Preencha watts: "150"
@@ -128,6 +140,7 @@
 7. **Confirme:** Modal fecha apenas após confirmação de sucesso
 
 ### Teste 3: Custo por Hora
+
 1. Cadastre impressora com 200W
 2. **Confirme no card:** Vê "💡 Custo/hora: R$ 0.14/h" (se custo_kwh = 0.70)
 3. **Confirme no feedback:** Vê custo estimado detalhado
@@ -139,12 +152,14 @@
 ## 🔄 Arquivos Modificados
 
 ### `lib/hooks/usePrinterModels.ts`
+
 - ✅ Refatorado para busca assíncrona
 - ✅ Adicionado `popularModels` state
 - ✅ Adicionado `searching` state
 - ✅ Função `searchModels()` agora é async
 
 ### `app/dashboard/impressoras/page.tsx`
+
 - ✅ Implementado debounce na busca (300ms)
 - ✅ Adicionado loading de user_settings
 - ✅ Criado helper `calculateHourlyCost()`
@@ -169,6 +184,7 @@
 ## 🎯 Próximos Passos (Sugeridos)
 
 ### Melhorias Opcionais
+
 - [ ] Adicionar cache local dos modelos populares (localStorage)
 - [ ] Botão "Remover seleção" no modo Model após selecionar
 - [ ] Histórico de buscas recentes (últimas 5)
@@ -176,6 +192,7 @@
 - [ ] Visualização de custo mensal estimado (baseado em horas médias)
 
 ### Otimizações
+
 - [ ] Lazy loading de modelos (pagination)
 - [ ] Service Worker para cache de queries frequentes
 - [ ] Prefetch de modelos populares no background

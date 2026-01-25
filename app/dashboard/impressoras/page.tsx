@@ -5,7 +5,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
 import { usePrinterModelSearch } from "@/lib/hooks/usePrinterModelSearch";
-import { useUserCostSettings, calcEnergyCostPerHour } from "@/lib/hooks/useUserCostSettings";
+import {
+  useUserCostSettings,
+  calcEnergyCostPerHour,
+} from "@/lib/hooks/useUserCostSettings";
 import { useOnboardingStatus } from "@/lib/hooks/useOnboardingStatus";
 import {
   Printer,
@@ -109,23 +112,26 @@ export default function ImpressorasPage() {
   const { user } = useAuth();
   const { refresh: refreshOnboarding } = useOnboardingStatus();
   const { kwhCost, loading: costLoading } = useUserCostSettings();
-  
+
   const [printers, setPrinters] = useState<PrinterData[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState<"model" | "quick" | "manual">("model");
+  const [modalMode, setModalMode] = useState<"model" | "quick" | "manual">(
+    "model",
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
-  
+
   // Model selector state
   const [searchQuery, setSearchQuery] = useState("");
-  const { results: filteredModels, loading: searchLoading } = usePrinterModelSearch(searchQuery);
+  const { results: filteredModels, loading: searchLoading } =
+    usePrinterModelSearch(searchQuery);
   const [selectedModel, setSelectedModel] = useState<PrinterModel | null>(null);
-  
+
   // Quick preset state
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
-  
+
   // Form state
   const [formData, setFormData] = useState<Partial<PrinterData>>({
     name: "",
@@ -140,7 +146,7 @@ export default function ImpressorasPage() {
   // Real-time cost preview
   const energyCostPreview = calcEnergyCostPerHour(
     formData.power_watts_default || 0,
-    kwhCost
+    kwhCost,
   );
 
   useEffect(() => {
@@ -212,11 +218,11 @@ export default function ImpressorasPage() {
     // Brand/Model: se tiver um, exigir ambos (opcional)
     const hasBrand = formData.brand && formData.brand.trim();
     const hasModel = formData.model && formData.model.trim();
-    
+
     if (hasBrand && !hasModel) {
       errors.model = "Informe o modelo ou deixe marca vazia";
     }
-    
+
     if (hasModel && !hasBrand) {
       errors.brand = "Informe a marca ou deixe modelo vazio";
     }
@@ -282,7 +288,8 @@ export default function ImpressorasPage() {
             notes: formData.notes || null,
             power_watts_default: formData.power_watts_default,
             kwh_cost_override: formData.kwh_cost_override || null,
-            machine_hour_cost_override: formData.machine_hour_cost_override || null,
+            machine_hour_cost_override:
+              formData.machine_hour_cost_override || null,
             active: formData.active,
             printer_model_id: formData.printer_model_id || null,
             updated_at: new Date().toISOString(),
@@ -307,7 +314,8 @@ export default function ImpressorasPage() {
             notes: formData.notes || null,
             power_watts_default: formData.power_watts_default,
             kwh_cost_override: formData.kwh_cost_override || null,
-            machine_hour_cost_override: formData.machine_hour_cost_override || null,
+            machine_hour_cost_override:
+              formData.machine_hour_cost_override || null,
             is_default: formData.is_default || false,
             active: formData.active || true,
             printer_model_id: formData.printer_model_id || null,
@@ -327,19 +335,22 @@ export default function ImpressorasPage() {
       }
 
       await loadPrinters();
-      
+
       // SUCCESS: Show feedback and close modal
-      const energyCost = calcEnergyCostPerHour(formData.power_watts_default!, kwhCost);
-      alert(
-        `✅ Impressora ${editingId ? 'atualizada' : 'cadastrada'} com sucesso!\n\n` +
-        `💡 Energia estimada: R$ ${energyCost.toFixed(2)}/h\n` +
-        `(Baseado em ${formData.power_watts_default}W e R$ ${kwhCost.toFixed(2)}/kWh)`
+      const energyCost = calcEnergyCostPerHour(
+        formData.power_watts_default!,
+        kwhCost,
       );
-      
+      alert(
+        `✅ Impressora ${editingId ? "atualizada" : "cadastrada"} com sucesso!\n\n` +
+          `💡 Energia estimada: R$ ${energyCost.toFixed(2)}/h\n` +
+          `(Baseado em ${formData.power_watts_default}W e R$ ${kwhCost.toFixed(2)}/kWh)`,
+      );
+
       setShowModal(false);
     } catch (error: any) {
       console.error("Erro ao salvar impressora:", error);
-      
+
       // ERROR: Keep modal open and show error
       setFormErrors({
         general: error.message || "Erro ao salvar impressora. Tente novamente.",
@@ -371,7 +382,7 @@ export default function ImpressorasPage() {
       await loadPrinters();
     } catch (error: any) {
       console.error("Erro ao definir impressora padrão:", error);
-      
+
       // Show error to user
       setFormErrors({
         general: error.message || "Erro ao definir impressora padrão",
@@ -438,7 +449,9 @@ export default function ImpressorasPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-vultrix-accent mx-auto"></div>
-          <p className="mt-4 text-vultrix-light/70">Carregando impressoras...</p>
+          <p className="mt-4 text-vultrix-light/70">
+            Carregando impressoras...
+          </p>
         </div>
       </div>
     );
@@ -476,12 +489,13 @@ export default function ImpressorasPage() {
             <div className="w-24 h-24 bg-gradient-to-br from-vultrix-accent/20 to-purple-600/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-vultrix-accent/30">
               <Printer className="w-12 h-12 text-vultrix-accent" />
             </div>
-            
+
             <h2 className="text-2xl font-bold text-white mb-3">
               Nenhuma impressora cadastrada
             </h2>
             <p className="text-vultrix-light/70 mb-8">
-              Cadastre sua primeira impressora para começar a calcular custos reais e gerenciar suas produções
+              Cadastre sua primeira impressora para começar a calcular custos
+              reais e gerenciar suas produções
             </p>
 
             <div className="space-y-3">
@@ -532,7 +546,9 @@ export default function ImpressorasPage() {
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-lg font-bold text-white">{printer.name}</h3>
+                    <h3 className="text-lg font-bold text-white">
+                      {printer.name}
+                    </h3>
                     {printer.is_default && (
                       <Star className="w-4 h-4 text-vultrix-accent fill-vultrix-accent" />
                     )}
@@ -565,12 +581,14 @@ export default function ImpressorasPage() {
                     {printer.power_watts_default}W
                   </span>
                 </div>
-                
+
                 {/* Energy Cost */}
                 {printer.machine_hour_cost_override ? (
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-lg">💰</span>
-                    <span className="text-vultrix-light/70">Custo/h (override):</span>
+                    <span className="text-vultrix-light/70">
+                      Custo/h (override):
+                    </span>
                     <span className="text-green-400 font-bold ml-auto">
                       R$ {printer.machine_hour_cost_override.toFixed(2)}/h
                     </span>
@@ -580,7 +598,12 @@ export default function ImpressorasPage() {
                     <span className="text-lg">💡</span>
                     <span className="text-vultrix-light/70">Energia:</span>
                     <span className="text-green-400 font-bold ml-auto">
-                      R$ {calcEnergyCostPerHour(printer.power_watts_default, kwhCost).toFixed(2)}/h
+                      R${" "}
+                      {calcEnergyCostPerHour(
+                        printer.power_watts_default,
+                        kwhCost,
+                      ).toFixed(2)}
+                      /h
                     </span>
                   </div>
                 )}
@@ -604,7 +627,11 @@ export default function ImpressorasPage() {
                   className="flex-1 bg-vultrix-gray/50 hover:bg-vultrix-gray text-white font-semibold py-2 px-3 rounded-lg transition-all text-sm inline-flex items-center justify-center gap-1"
                   title={printer.active ? "Desativar" : "Ativar"}
                 >
-                  {printer.active ? <PowerOff size={14} /> : <Power size={14} />}
+                  {printer.active ? (
+                    <PowerOff size={14} />
+                  ) : (
+                    <Power size={14} />
+                  )}
                   {printer.active ? "Desativar" : "Ativar"}
                 </button>
 
@@ -729,7 +756,10 @@ export default function ImpressorasPage() {
                           Buscar Modelo
                         </label>
                         <div className="relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-vultrix-light/50" size={20} />
+                          <Search
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-vultrix-light/50"
+                            size={20}
+                          />
                           <input
                             type="text"
                             value={searchQuery}
@@ -745,7 +775,9 @@ export default function ImpressorasPage() {
                         {searchLoading ? (
                           <div className="text-center py-8">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-vultrix-accent mx-auto"></div>
-                            <p className="text-vultrix-light/60 text-sm mt-2">Buscando modelos...</p>
+                            <p className="text-vultrix-light/60 text-sm mt-2">
+                              Buscando modelos...
+                            </p>
                           </div>
                         ) : filteredModels.length > 0 ? (
                           filteredModels.map((model) => (
@@ -796,7 +828,10 @@ export default function ImpressorasPage() {
                               {selectedModel.brand} {selectedModel.model}
                             </p>
                             <p className="text-vultrix-light/70 text-sm mt-2">
-                              Consumo sugerido: <span className="text-yellow-500 font-semibold">{selectedModel.avg_watts}W</span>
+                              Consumo sugerido:{" "}
+                              <span className="text-yellow-500 font-semibold">
+                                {selectedModel.avg_watts}W
+                              </span>
                             </p>
                           </div>
                         </div>
@@ -822,11 +857,17 @@ export default function ImpressorasPage() {
                           id="is_default_model"
                           checked={formData.is_default}
                           onChange={(e) =>
-                            setFormData({ ...formData, is_default: e.target.checked })
+                            setFormData({
+                              ...formData,
+                              is_default: e.target.checked,
+                            })
                           }
                           className="w-5 h-5"
                         />
-                        <label htmlFor="is_default_model" className="text-white cursor-pointer">
+                        <label
+                          htmlFor="is_default_model"
+                          className="text-white cursor-pointer"
+                        >
                           Definir como impressora padrão
                         </label>
                       </div>
@@ -873,8 +914,12 @@ export default function ImpressorasPage() {
                           <div className="opacity-80 group-hover:opacity-100 mb-3">
                             {preset.icon}
                           </div>
-                          <h3 className="font-bold text-lg mb-1">{preset.name}</h3>
-                          <p className="text-sm opacity-90 mb-3">{preset.description}</p>
+                          <h3 className="font-bold text-lg mb-1">
+                            {preset.name}
+                          </h3>
+                          <p className="text-sm opacity-90 mb-3">
+                            {preset.description}
+                          </p>
                           <div className="bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full inline-block text-sm font-semibold">
                             {preset.watts}W
                           </div>
@@ -889,7 +934,10 @@ export default function ImpressorasPage() {
                           Preset Selecionado
                         </p>
                         <p className="text-white text-lg font-bold">
-                          {QUICK_PRESETS.find((p) => p.id === selectedPreset)?.name}
+                          {
+                            QUICK_PRESETS.find((p) => p.id === selectedPreset)
+                              ?.name
+                          }
                         </p>
                       </div>
 
@@ -930,11 +978,17 @@ export default function ImpressorasPage() {
                           id="is_default_quick"
                           checked={formData.is_default}
                           onChange={(e) =>
-                            setFormData({ ...formData, is_default: e.target.checked })
+                            setFormData({
+                              ...formData,
+                              is_default: e.target.checked,
+                            })
                           }
                           className="w-5 h-5"
                         />
-                        <label htmlFor="is_default_quick" className="text-white cursor-pointer">
+                        <label
+                          htmlFor="is_default_quick"
+                          className="text-white cursor-pointer"
+                        >
                           Definir como impressora padrão
                         </label>
                       </div>
@@ -975,8 +1029,12 @@ export default function ImpressorasPage() {
                     <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-start gap-3">
                       <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
                       <div>
-                        <p className="text-red-500 font-semibold">Erro ao salvar</p>
-                        <p className="text-red-400 text-sm mt-1">{formErrors.general}</p>
+                        <p className="text-red-500 font-semibold">
+                          Erro ao salvar
+                        </p>
+                        <p className="text-red-400 text-sm mt-1">
+                          {formErrors.general}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -991,7 +1049,8 @@ export default function ImpressorasPage() {
                         value={formData.name}
                         onChange={(e) => {
                           setFormData({ ...formData, name: e.target.value });
-                          if (formErrors.name) setFormErrors({ ...formErrors, name: undefined });
+                          if (formErrors.name)
+                            setFormErrors({ ...formErrors, name: undefined });
                         }}
                         className={`w-full bg-vultrix-dark border rounded-lg py-3 px-4 text-white focus:outline-none ${
                           formErrors.name
@@ -1017,7 +1076,8 @@ export default function ImpressorasPage() {
                         value={formData.brand || ""}
                         onChange={(e) => {
                           setFormData({ ...formData, brand: e.target.value });
-                          if (formErrors.brand) setFormErrors({ ...formErrors, brand: undefined });
+                          if (formErrors.brand)
+                            setFormErrors({ ...formErrors, brand: undefined });
                         }}
                         className={`w-full bg-vultrix-dark border rounded-lg py-3 px-4 text-white focus:outline-none ${
                           formErrors.brand
@@ -1043,7 +1103,8 @@ export default function ImpressorasPage() {
                         value={formData.model || ""}
                         onChange={(e) => {
                           setFormData({ ...formData, model: e.target.value });
-                          if (formErrors.model) setFormErrors({ ...formErrors, model: undefined });
+                          if (formErrors.model)
+                            setFormErrors({ ...formErrors, model: undefined });
                         }}
                         className={`w-full bg-vultrix-dark border rounded-lg py-3 px-4 text-white focus:outline-none ${
                           formErrors.model
@@ -1073,7 +1134,10 @@ export default function ImpressorasPage() {
                             power_watts_default: Number(e.target.value),
                           });
                           if (formErrors.power_watts_default) {
-                            setFormErrors({ ...formErrors, power_watts_default: undefined });
+                            setFormErrors({
+                              ...formErrors,
+                              power_watts_default: undefined,
+                            });
                           }
                         }}
                         className={`w-full bg-vultrix-dark border rounded-lg py-3 px-4 text-white focus:outline-none ${
@@ -1089,26 +1153,30 @@ export default function ImpressorasPage() {
                           {formErrors.power_watts_default}
                         </p>
                       )}
-                      
+
                       {/* Real-time cost preview */}
                       {!costLoading && energyCostPreview > 0 && (
                         <div className="mt-2 bg-green-500/10 border border-green-500/30 rounded-lg p-3">
                           <p className="text-green-400 text-sm font-semibold flex items-center gap-2">
                             <span className="text-base">💡</span>
-                            Energia estimada: R$ {energyCostPreview.toFixed(2)}/h
+                            Energia estimada: R$ {energyCostPreview.toFixed(2)}
+                            /h
                           </p>
                           <p className="text-green-400/70 text-xs mt-1">
                             Baseado em R$ {kwhCost.toFixed(2)}/kWh
                           </p>
                         </div>
                       )}
-                      
+
                       {!costLoading && kwhCost === 0.95 && (
                         <div className="mt-2 bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
                           <p className="text-blue-400 text-xs flex items-center gap-2">
                             <AlertCircle className="w-3 h-3" />
-                            Usando custo padrão. 
-                            <a href="/dashboard/perfil" className="underline inline-flex items-center gap-1 hover:text-blue-300">
+                            Usando custo padrão.
+                            <a
+                              href="/dashboard/perfil"
+                              className="underline inline-flex items-center gap-1 hover:text-blue-300"
+                            >
                               Configurar no perfil
                               <ExternalLink className="w-3 h-3" />
                             </a>
@@ -1139,11 +1207,17 @@ export default function ImpressorasPage() {
                       id="is_default_manual"
                       checked={formData.is_default}
                       onChange={(e) =>
-                        setFormData({ ...formData, is_default: e.target.checked })
+                        setFormData({
+                          ...formData,
+                          is_default: e.target.checked,
+                        })
                       }
                       className="w-5 h-5"
                     />
-                    <label htmlFor="is_default_manual" className="text-white cursor-pointer">
+                    <label
+                      htmlFor="is_default_manual"
+                      className="text-white cursor-pointer"
+                    >
                       Definir como impressora padrão
                     </label>
                   </div>
@@ -1158,7 +1232,10 @@ export default function ImpressorasPage() {
                       }
                       className="w-5 h-5"
                     />
-                    <label htmlFor="active_manual" className="text-white cursor-pointer">
+                    <label
+                      htmlFor="active_manual"
+                      className="text-white cursor-pointer"
+                    >
                       Impressora ativa
                     </label>
                   </div>
@@ -1181,8 +1258,10 @@ export default function ImpressorasPage() {
                           <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                           {editingId ? "Atualizando..." : "Salvando..."}
                         </>
+                      ) : editingId ? (
+                        "Atualizar"
                       ) : (
-                        editingId ? "Atualizar" : "Salvar"
+                        "Salvar"
                       )}
                     </button>
                   </div>

@@ -10,22 +10,30 @@ type ModelSelectorProps = {
   disabled?: boolean;
 };
 
-export function ModelSelector({ models, onSelect, disabled }: ModelSelectorProps) {
+export function ModelSelector({
+  models,
+  onSelect,
+  disabled,
+}: ModelSelectorProps) {
   const [search, setSearch] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const filteredModels = search.length >= 2
-    ? models.filter(
-        (m) =>
-          m.brand.toLowerCase().includes(search.toLowerCase()) ||
-          m.model.toLowerCase().includes(search.toLowerCase())
-      )
-    : models;
+  const filteredModels =
+    search.length >= 2
+      ? models.filter(
+          (m) =>
+            m.brand.toLowerCase().includes(search.toLowerCase()) ||
+            m.model.toLowerCase().includes(search.toLowerCase()),
+        )
+      : models;
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
         setIsOpen(false);
       }
     };

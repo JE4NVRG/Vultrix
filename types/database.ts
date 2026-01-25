@@ -17,6 +17,7 @@ export interface Database {
           name: string;
           website: string | null;
           logo_url: string | null;
+          normalized_name: string;
         };
         Insert: {
           id?: string;
@@ -25,6 +26,7 @@ export interface Database {
           name: string;
           website?: string | null;
           logo_url?: string | null;
+          normalized_name: string;
         };
         Update: {
           id?: string;
@@ -33,6 +35,7 @@ export interface Database {
           name?: string;
           website?: string | null;
           logo_url?: string | null;
+          normalized_name?: string;
         };
       };
       filaments: {
@@ -53,6 +56,14 @@ export interface Database {
           color_hex: string;
           image_url: string | null;
           notes: string | null;
+          purchase_source: string | null;
+          purchase_url: string | null;
+          cost_per_kg_with_shipping: number;
+          purchase_shipping_total: number | null;
+          purchase_fees_total: number | null;
+          shipping_prorated_by_weight: boolean;
+          shipping_share_value: number | null;
+          fees_share_value: number | null;
         };
         Insert: {
           id?: string;
@@ -71,6 +82,14 @@ export interface Database {
           color_hex?: string;
           image_url?: string | null;
           notes?: string | null;
+          purchase_source?: string | null;
+          purchase_url?: string | null;
+          cost_per_kg_with_shipping?: number;
+          purchase_shipping_total?: number | null;
+          purchase_fees_total?: number | null;
+          shipping_prorated_by_weight?: boolean;
+          shipping_share_value?: number | null;
+          fees_share_value?: number | null;
         };
         Update: {
           id?: string;
@@ -89,6 +108,14 @@ export interface Database {
           color_hex?: string;
           image_url?: string | null;
           notes?: string | null;
+          purchase_source?: string | null;
+          purchase_url?: string | null;
+          cost_per_kg_with_shipping?: number;
+          purchase_shipping_total?: number | null;
+          purchase_fees_total?: number | null;
+          shipping_prorated_by_weight?: boolean;
+          shipping_share_value?: number | null;
+          fees_share_value?: number | null;
         };
       };
       expenses: {

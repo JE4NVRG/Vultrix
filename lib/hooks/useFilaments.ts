@@ -14,6 +14,8 @@ export type Filament = {
   peso_atual: number;
   peso_inicial: number;
   active: boolean;
+  purchase_source: string | null;
+  purchase_url: string | null;
 };
 
 export function useFilaments() {

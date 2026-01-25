@@ -203,14 +203,14 @@ Acesse: **http://localhost:3000**
 
 O projeto inclui documentação completa em português:
 
-| Documento | Descrição |
-|-----------|-----------|
-| [INICIO_RAPIDO.md](INICIO_RAPIDO.md) | Guia de primeiros passos |
-| [CONFIGURACAO_SUPABASE.md](CONFIGURACAO_SUPABASE.md) | Setup do banco de dados |
-| [GUIA_AUTENTICACAO.md](GUIA_AUTENTICACAO.md) | Sistema de login/logout |
-| [FASE1_ONBOARDING_MAKER.md](FASE1_ONBOARDING_MAKER.md) | Perfil + Impressoras |
-| [SISTEMA_COMPLETO.md](SISTEMA_COMPLETO.md) | Visão geral da arquitetura |
-| [STATUS.md](STATUS.md) | Estado atual do desenvolvimento |
+| Documento                                              | Descrição                       |
+| ------------------------------------------------------ | ------------------------------- |
+| [INICIO_RAPIDO.md](INICIO_RAPIDO.md)                   | Guia de primeiros passos        |
+| [CONFIGURACAO_SUPABASE.md](CONFIGURACAO_SUPABASE.md)   | Setup do banco de dados         |
+| [GUIA_AUTENTICACAO.md](GUIA_AUTENTICACAO.md)           | Sistema de login/logout         |
+| [FASE1_ONBOARDING_MAKER.md](FASE1_ONBOARDING_MAKER.md) | Perfil + Impressoras            |
+| [SISTEMA_COMPLETO.md](SISTEMA_COMPLETO.md)             | Visão geral da arquitetura      |
+| [STATUS.md](STATUS.md)                                 | Estado atual do desenvolvimento |
 
 ---
 
@@ -303,7 +303,6 @@ Desenvolvido com 💜 por **Vultrix**
 <div align="center">
   <sub>Construído para a comunidade maker brasileira 🇧🇷</sub>
 </div>
-
 
 Código fechado - Propriedade de Jean (Vultrix 3D)
 

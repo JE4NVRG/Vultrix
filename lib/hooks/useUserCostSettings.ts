@@ -66,9 +66,10 @@ export function useUserCostSettings(): UserCostSettings {
         .eq("user_id", user!.id)
         .maybeSingle();
 
-      const kwhCost = userSettings?.custo_kwh && userSettings.custo_kwh > 0
-        ? userSettings.custo_kwh
-        : 0.95; // Fallback final
+      const kwhCost =
+        userSettings?.custo_kwh && userSettings.custo_kwh > 0
+          ? userSettings.custo_kwh
+          : 0.95; // Fallback final
 
       setSettings({
         kwhCost,
@@ -96,7 +97,7 @@ export function calcEnergyCostPerHour(watts: number, kwhCost: number): number {
   if (!watts || watts <= 0 || !kwhCost || kwhCost <= 0) {
     return 0;
   }
-  
+
   const kwhPerHour = watts / 1000;
   return kwhPerHour * kwhCost;
 }

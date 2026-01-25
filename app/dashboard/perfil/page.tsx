@@ -5,7 +5,25 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { User, Instagram, Phone, MapPin, DollarSign, Percent, Package, Tag, Send, Save, RotateCcw, Upload, CheckCircle, ArrowLeft, Edit3, X, Image } from "lucide-react";
+import {
+  User,
+  Instagram,
+  Phone,
+  MapPin,
+  DollarSign,
+  Percent,
+  Package,
+  Tag,
+  Send,
+  Save,
+  RotateCcw,
+  Upload,
+  CheckCircle,
+  ArrowLeft,
+  Edit3,
+  X,
+  Image,
+} from "lucide-react";
 
 type ProfileData = {
   display_name?: string;
@@ -81,17 +99,15 @@ export default function PerfilPage() {
       setSaving(true);
       setSaved(false);
 
-      const { error } = await supabase
-        .from("user_profile")
-        .upsert(
-          {
-            user_id: user!.id,
-            ...profile,
-            profile_completed: true,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" }
-        );
+      const { error } = await supabase.from("user_profile").upsert(
+        {
+          user_id: user!.id,
+          ...profile,
+          profile_completed: true,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      );
 
       if (error) {
         console.error("Detalhes do erro:", error);
@@ -103,7 +119,9 @@ export default function PerfilPage() {
     } catch (error: any) {
       console.error("Erro ao salvar perfil:", error);
       const errorMsg = error?.message || "Erro desconhecido";
-      alert(`Erro ao salvar perfil: ${errorMsg}\n\nVerifique se a migration 014 foi executada no Supabase.`);
+      alert(
+        `Erro ao salvar perfil: ${errorMsg}\n\nVerifique se a migration 014 foi executada no Supabase.`,
+      );
     } finally {
       setSaving(false);
     }
@@ -150,9 +168,9 @@ export default function PerfilPage() {
       if (uploadError) throw uploadError;
 
       // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from("profile-images")
-        .getPublicUrl(fileName);
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("profile-images").getPublicUrl(fileName);
 
       setProfile({ ...profile, logo_url: publicUrl });
     } catch (error: any) {
@@ -271,9 +289,7 @@ export default function PerfilPage() {
             <input
               type="text"
               value={profile.city || ""}
-              onChange={(e) =>
-                setProfile({ ...profile, city: e.target.value })
-              }
+              onChange={(e) => setProfile({ ...profile, city: e.target.value })}
               placeholder="Ex: São Paulo, SP"
               className="w-full bg-vultrix-black border border-vultrix-gray rounded-lg px-4 py-2 text-white focus:outline-none focus:border-vultrix-accent"
             />
@@ -285,7 +301,7 @@ export default function PerfilPage() {
               <Image size={16} />
               Logo / Foto do Perfil
             </label>
-            
+
             <div className="flex items-center gap-4">
               {profile.logo_url && (
                 <div className="relative w-24 h-24 rounded-lg overflow-hidden border-2 border-vultrix-gray">
@@ -303,7 +319,7 @@ export default function PerfilPage() {
                   </button>
                 </div>
               )}
-              
+
               <div className="flex-1">
                 <input
                   type="file"
@@ -412,7 +428,10 @@ export default function PerfilPage() {
                 }
                 className="w-5 h-5 rounded border-vultrix-gray bg-vultrix-black checked:bg-vultrix-accent focus:ring-2 focus:ring-vultrix-accent"
               />
-              <Package size={18} className="text-vultrix-light/60 group-hover:text-white" />
+              <Package
+                size={18}
+                className="text-vultrix-light/60 group-hover:text-white"
+              />
               <span className="text-vultrix-light group-hover:text-white">
                 Incluir embalagem
               </span>
@@ -431,7 +450,10 @@ export default function PerfilPage() {
                 }
                 className="w-5 h-5 rounded border-vultrix-gray bg-vultrix-black checked:bg-vultrix-accent focus:ring-2 focus:ring-vultrix-accent"
               />
-              <Tag size={18} className="text-vultrix-light/60 group-hover:text-white" />
+              <Tag
+                size={18}
+                className="text-vultrix-light/60 group-hover:text-white"
+              />
               <span className="text-vultrix-light group-hover:text-white">
                 Incluir etiqueta
               </span>
@@ -450,7 +472,10 @@ export default function PerfilPage() {
                 }
                 className="w-5 h-5 rounded border-vultrix-gray bg-vultrix-black checked:bg-vultrix-accent focus:ring-2 focus:ring-vultrix-accent"
               />
-              <Send size={18} className="text-vultrix-light/60 group-hover:text-white" />
+              <Send
+                size={18}
+                className="text-vultrix-light/60 group-hover:text-white"
+              />
               <span className="text-vultrix-light group-hover:text-white">
                 Incluir envio
               </span>

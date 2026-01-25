@@ -3,11 +3,13 @@
 ## 📋 Componentes Implementados
 
 ### ✅ Migration 018
+
 - [x] Coluna `onboarding_dismissed` adicionada em `user_settings`
 - [x] Trigger para garantir default `false`
 - [x] Migration idempotente (IF NOT EXISTS)
 
 ### ✅ Hook `useOnboardingStatus`
+
 - [x] Retorna `hasProfile` (baseado em `display_name` preenchido)
 - [x] Retorna `hasPrinter` (existe pelo menos 1 impressora)
 - [x] Retorna `isComplete` (ambos completos)
@@ -16,6 +18,7 @@
 - [x] Função `dismiss()` que persiste no banco
 
 ### ✅ Dashboard - Welcome Header
+
 - [x] Avatar do usuário (foto ou iniciais com gradiente)
 - [x] Nome de boas-vindas personalizado
 - [x] Fallback "Complete seu perfil" se não tiver nome
@@ -23,6 +26,7 @@
 - [x] Botão rápido para completar perfil (se não tiver nome)
 
 ### ✅ Dashboard - Banner Inteligente
+
 - [x] Só aparece se `!isComplete && !isDismissed`
 - [x] Progresso visual (0/2, 1/2, 2/2)
 - [x] Checklist com ícones (✓ verde ou ○ cinza)
@@ -38,9 +42,11 @@
 ## 🧪 Cenários de Teste
 
 ### Cenário 1: Novo Usuário (Nada Configurado)
+
 **Status:** `hasProfile: false, hasPrinter: false, isDismissed: false`
 
 **Comportamento Esperado:**
+
 - ✅ Header mostra "Bem-vindo de volta! 👋"
 - ✅ Iniciais mostram "?" no avatar
 - ✅ Botão "Completar Perfil" visível no header
@@ -49,6 +55,7 @@
 - ✅ Ambos botões visíveis: "Configurar Perfil" (destaque) e "Cadastrar Impressora"
 
 **Passos:**
+
 1. Faça logout e crie uma conta nova
 2. Verifique o dashboard após login
 3. Confirme que banner e header aparecem corretamente
@@ -56,9 +63,11 @@
 ---
 
 ### Cenário 2: Perfil Configurado, Sem Impressora
+
 **Status:** `hasProfile: true, hasPrinter: false, isDismissed: false`
 
 **Comportamento Esperado:**
+
 - ✅ Header mostra "Bem-vindo de volta, [Nome]! 👋"
 - ✅ Avatar mostra foto (se tiver) ou iniciais do nome
 - ✅ Botão "Completar Perfil" NÃO aparece no header
@@ -68,6 +77,7 @@
 - ✅ Apenas botão "Cadastrar Impressora" visível (com destaque)
 
 **Passos:**
+
 1. Vá em `/dashboard/perfil`
 2. Preencha nome, cidade, etc. e salve
 3. Volte ao dashboard e verifique
@@ -75,9 +85,11 @@
 ---
 
 ### Cenário 3: Impressora Cadastrada, Sem Perfil
+
 **Status:** `hasProfile: false, hasPrinter: true, isDismissed: false`
 
 **Comportamento Esperado:**
+
 - ✅ Header mostra "Bem-vindo de volta! 👋" (sem nome)
 - ✅ Avatar mostra "?"
 - ✅ Botão "Completar Perfil" visível no header
@@ -87,6 +99,7 @@
 - ✅ Apenas botão "Configurar Perfil" visível (com destaque)
 
 **Passos:**
+
 1. Cadastre uma impressora em `/dashboard/impressoras`
 2. Não preencha o perfil
 3. Verifique o dashboard
@@ -94,9 +107,11 @@
 ---
 
 ### Cenário 4: Tudo Completo, Banner Não Dispensado
+
 **Status:** `hasProfile: true, hasPrinter: true, isDismissed: false`
 
 **Comportamento Esperado:**
+
 - ✅ Header mostra nome e avatar corretos
 - ✅ Banner visível com progresso "2/2"
 - ✅ Ambos checkboxes marcados (✓ verde)
@@ -104,6 +119,7 @@
 - ✅ Botões de ação não aparecem
 
 **Passos:**
+
 1. Configure perfil completo
 2. Cadastre pelo menos 1 impressora
 3. Verifique que banner ainda aparece mas com mensagem de sucesso
@@ -111,14 +127,17 @@
 ---
 
 ### Cenário 5: Banner Dispensado Manualmente
+
 **Status:** `isComplete: false, isDismissed: true`
 
 **Comportamento Esperado:**
+
 - ✅ Header continua normal
 - ✅ Banner NÃO aparece (mesmo que faltam coisas)
 - ✅ Persiste após reload da página
 
 **Passos:**
+
 1. Com banner visível, clique no X
 2. Recarregue a página (F5)
 3. Verifique que banner não reaparece
@@ -131,14 +150,17 @@
 ---
 
 ### Cenário 6: Tudo Completo e Dispensado
+
 **Status:** `isComplete: true, isDismissed: true`
 
 **Comportamento Esperado:**
+
 - ✅ Header mostra nome e avatar
 - ✅ Banner NÃO aparece
 - ✅ Dashboard limpo e profissional
 
 **Passos:**
+
 1. Complete perfil e impressora
 2. Dispense o banner clicando no X
 3. Recarregue a página
@@ -149,22 +171,26 @@
 ## 🔍 Testes de Integração
 
 ### Teste 1: Avatar Upload
+
 1. ✅ Faça upload de uma foto no perfil
 2. ✅ Volte ao dashboard
 3. ✅ Avatar deve mostrar a foto no header
 
 ### Teste 2: Alteração de Nome
+
 1. ✅ Mude o nome no perfil
 2. ✅ Volte ao dashboard
 3. ✅ Mensagem de boas-vindas deve atualizar
 
 ### Teste 3: Exclusão de Impressora
+
 1. ✅ Exclua todas as impressoras
 2. ✅ Volte ao dashboard
 3. ✅ Banner deve reaparecer (se não foi dispensado)
 4. ✅ Checkbox "Impressora cadastrada" deve ficar desmarcado
 
 ### Teste 4: Limpar Perfil
+
 1. ✅ Limpe o campo `display_name` no perfil
 2. ✅ Volte ao dashboard
 3. ✅ Header deve mostrar "Bem-vindo de volta!" (genérico)
@@ -175,19 +201,23 @@
 ## 🐛 Verificações de Edge Cases
 
 ### Edge Case 1: Usuário sem `user_settings`
+
 - ✅ Hook deve criar entrada automaticamente no primeiro acesso
 - ✅ Não deve quebrar a UI (loading state correto)
 
 ### Edge Case 2: Usuário com perfil parcial
+
 - ✅ Se `display_name` vazio → considera sem perfil
 - ✅ Se `logo_url` vazio mas `display_name` preenchido → considera com perfil (avatar com iniciais)
 
 ### Edge Case 3: Loading States
+
 - ✅ Durante carregamento, não mostrar banner "piscando"
 - ✅ Skeleton ou spinner no header durante loading
 - ✅ Evitar flash de conteúdo incorreto (FOUC)
 
 ### Edge Case 4: Erro no Supabase
+
 - ✅ Se hook falhar, não quebrar dashboard
 - ✅ Banner não aparece em caso de erro (fallback seguro)
 - ✅ Console.error registra problema
@@ -197,8 +227,9 @@
 ## 📊 Queries de Verificação (Supabase SQL Editor)
 
 ### Ver status de um usuário específico:
+
 ```sql
-SELECT 
+SELECT
   up.display_name,
   up.logo_url,
   us.onboarding_dismissed,
@@ -211,16 +242,18 @@ GROUP BY up.display_name, up.logo_url, us.onboarding_dismissed;
 ```
 
 ### Resetar onboarding para testes:
+
 ```sql
-UPDATE user_settings 
-SET onboarding_dismissed = false 
+UPDATE user_settings
+SET onboarding_dismissed = false
 WHERE user_id = 'SEU_USER_ID_AQUI';
 ```
 
 ### Limpar perfil para testes:
+
 ```sql
-UPDATE user_profile 
-SET display_name = NULL, logo_url = NULL 
+UPDATE user_profile
+SET display_name = NULL, logo_url = NULL
 WHERE user_id = 'SEU_USER_ID_AQUI';
 ```
 

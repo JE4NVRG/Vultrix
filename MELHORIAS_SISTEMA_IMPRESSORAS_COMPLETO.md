@@ -3,6 +3,7 @@
 ## 📋 Resumo Executivo
 
 Implementação completa de melhorias no sistema de cadastro de impressoras conforme especificação, incluindo:
+
 - ✅ Prevenção de fechamento acidental do modal
 - ✅ Validações inline com feedback visual
 - ✅ Cálculo e exibição de custo por hora em tempo real
@@ -14,6 +15,7 @@ Implementação completa de melhorias no sistema de cadastro de impressoras conf
 ## 🎯 Problema 1: Modal Fechando Sozinho
 
 ### ❌ Comportamento Anterior
+
 - Modal fechava automaticamente ao submeter form
 - Fechava mesmo quando havia erro
 - Usuário perdia dados digitados
@@ -21,6 +23,7 @@ Implementação completa de melhorias no sistema de cadastro de impressoras conf
 ### ✅ Solução Implementada
 
 #### 1. Prevenção de Fechamento Durante Salvamento
+
 ```typescript
 // Modal backdrop
 onClick={(e) => {
@@ -39,6 +42,7 @@ disabled={saving}
 ```
 
 #### 2. Controle de Fluxo no `handleSave()`
+
 ```typescript
 const handleSave = async (e?: React.FormEvent) => {
   if (e) {
@@ -52,10 +56,10 @@ const handleSave = async (e?: React.FormEvent) => {
   try {
     setSaving(true);
     // ... operações no Supabase ...
-    
+
     await loadPrinters();
     setShowModal(false); // ✅ Fecha APENAS após sucesso
-    
+
     // Feedback de sucesso
     alert(`✅ Impressora cadastrada...`);
   } catch (error: any) {
@@ -70,6 +74,7 @@ const handleSave = async (e?: React.FormEvent) => {
 ```
 
 #### 3. Estado de Salvamento Visual
+
 - Botões desabilitados durante operação
 - Spinner + texto "Salvando..." / "Atualizando..."
 - Backdrop não fecha se `saving === true`
@@ -81,6 +86,7 @@ const handleSave = async (e?: React.FormEvent) => {
 ### ✅ Validações Implementadas
 
 #### Função `validateForm()`
+
 ```typescript
 const validateForm = (): boolean => {
   const errors: FormErrors = {};
@@ -98,11 +104,11 @@ const validateForm = (): boolean => {
   // Brand/Model: se tiver um, exigir ambos
   const hasBrand = formData.brand && formData.brand.trim();
   const hasModel = formData.model && formData.model.trim();
-  
+
   if (hasBrand && !hasModel) {
     errors.model = "Informe o modelo ou deixe marca vazia";
   }
-  
+
   if (hasModel && !hasBrand) {
     errors.brand = "Informe a marca ou deixe modelo vazio";
   }
@@ -115,6 +121,7 @@ const validateForm = (): boolean => {
 ### ✅ Feedback Visual Inline
 
 #### Erro no Campo
+
 ```tsx
 <input
   className={`... ${
@@ -129,26 +136,33 @@ const validateForm = (): boolean => {
       setFormErrors({ ...formErrors, name: undefined });
     }
   }}
-/>
+/>;
 
-{/* Mensagem de erro abaixo do campo */}
-{formErrors.name && (
-  <p className="text-red-400 text-sm mt-1 flex items-center gap-1">
-    <AlertCircle className="w-3 h-3" />
-    {formErrors.name}
-  </p>
-)}
+{
+  /* Mensagem de erro abaixo do campo */
+}
+{
+  formErrors.name && (
+    <p className="text-red-400 text-sm mt-1 flex items-center gap-1">
+      <AlertCircle className="w-3 h-3" />
+      {formErrors.name}
+    </p>
+  );
+}
 ```
 
 #### Erro Geral (no topo do form)
+
 ```tsx
-{formErrors.general && (
-  <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
-    <AlertCircle className="w-5 h-5 text-red-500" />
-    <p className="text-red-500 font-semibold">Erro ao salvar</p>
-    <p className="text-red-400 text-sm">{formErrors.general}</p>
-  </div>
-)}
+{
+  formErrors.general && (
+    <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+      <AlertCircle className="w-5 h-5 text-red-500" />
+      <p className="text-red-500 font-semibold">Erro ao salvar</p>
+      <p className="text-red-400 text-sm">{formErrors.general}</p>
+    </div>
+  );
+}
 ```
 
 ---
@@ -158,6 +172,7 @@ const validateForm = (): boolean => {
 ### ✅ Arquitetura Implementada
 
 #### 1. Hook `useUserCostSettings()`
+
 **Arquivo:** `lib/hooks/useUserCostSettings.ts`
 
 ```typescript
@@ -166,7 +181,7 @@ export function useUserCostSettings(): UserCostSettings {
   // 1. user_profile.default_kwh_cost (prioridade)
   // 2. user_settings.custo_kwh (fallback)
   // 3. 0.95 (fallback final - média BR)
-  
+
   return {
     kwhCost: number,
     defaultMachineHourCost: number | null,
@@ -178,11 +193,9 @@ export function useUserCostSettings(): UserCostSettings {
 ```
 
 #### 2. Função Helper `calcEnergyCostPerHour()`
+
 ```typescript
-export function calcEnergyCostPerHour(
-  watts: number, 
-  kwhCost: number
-): number {
+export function calcEnergyCostPerHour(watts: number, kwhCost: number): number {
   const kwhPerHour = watts / 1000;
   return kwhPerHour * kwhCost;
 }
@@ -191,51 +204,70 @@ export function calcEnergyCostPerHour(
 ### ✅ Exibição do Custo
 
 #### A) Nos Cards de Impressoras
+
 ```tsx
-{/* Com override */}
-{printer.machine_hour_cost_override ? (
-  <div>
-    💰 Custo/h (override): R$ {printer.machine_hour_cost_override.toFixed(2)}/h
-  </div>
-) : (
-  <div>
-    💡 Energia: R$ {calcEnergyCostPerHour(printer.power_watts_default, kwhCost).toFixed(2)}/h
-  </div>
-)}
+{
+  /* Com override */
+}
+{
+  printer.machine_hour_cost_override ? (
+    <div>
+      💰 Custo/h (override): R$ {printer.machine_hour_cost_override.toFixed(2)}
+      /h
+    </div>
+  ) : (
+    <div>
+      💡 Energia: R${" "}
+      {calcEnergyCostPerHour(printer.power_watts_default, kwhCost).toFixed(2)}/h
+    </div>
+  );
+}
 ```
 
 #### B) Preview em Tempo Real (Modal Manual)
+
 ```tsx
-{/* Atualiza conforme user digita watts */}
-{!costLoading && energyCostPreview > 0 && (
-  <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
-    <p className="text-green-400 text-sm font-semibold">
-      💡 Energia estimada: R$ {energyCostPreview.toFixed(2)}/h
-    </p>
-    <p className="text-green-400/70 text-xs mt-1">
-      Baseado em R$ {kwhCost.toFixed(2)}/kWh
-    </p>
-  </div>
-)}
+{
+  /* Atualiza conforme user digita watts */
+}
+{
+  !costLoading && energyCostPreview > 0 && (
+    <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+      <p className="text-green-400 text-sm font-semibold">
+        💡 Energia estimada: R$ {energyCostPreview.toFixed(2)}/h
+      </p>
+      <p className="text-green-400/70 text-xs mt-1">
+        Baseado em R$ {kwhCost.toFixed(2)}/kWh
+      </p>
+    </div>
+  );
+}
 ```
 
 #### C) Aviso se Usando Custo Padrão
+
 ```tsx
-{kwhCost === 0.95 && (
-  <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
-    <AlertCircle /> Usando custo padrão. 
-    <a href="/dashboard/perfil">Configurar no perfil →</a>
-  </div>
-)}
+{
+  kwhCost === 0.95 && (
+    <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+      <AlertCircle /> Usando custo padrão.
+      <a href="/dashboard/perfil">Configurar no perfil →</a>
+    </div>
+  );
+}
 ```
 
 #### D) Feedback Após Cadastro
+
 ```typescript
-const energyCost = calcEnergyCostPerHour(formData.power_watts_default!, kwhCost);
+const energyCost = calcEnergyCostPerHour(
+  formData.power_watts_default!,
+  kwhCost,
+);
 alert(
   `✅ Impressora cadastrada com sucesso!\n\n` +
-  `💡 Energia estimada: R$ ${energyCost.toFixed(2)}/h\n` +
-  `(Baseado em ${formData.power_watts_default}W e R$ ${kwhCost.toFixed(2)}/kWh)`
+    `💡 Energia estimada: R$ ${energyCost.toFixed(2)}/h\n` +
+    `(Baseado em ${formData.power_watts_default}W e R$ ${kwhCost.toFixed(2)}/kWh)`,
 );
 ```
 
@@ -244,6 +276,7 @@ alert(
 ## 🔍 Problema 4: Busca de Modelos
 
 ### ✅ Hook `usePrinterModelSearch()`
+
 **Arquivo:** `lib/hooks/usePrinterModelSearch.ts`
 
 ```typescript
@@ -263,14 +296,15 @@ export function usePrinterModelSearch(query: string) {
 
 ### Comportamento
 
-| Condição | Resultado |
-|----------|-----------|
-| Query vazio | 8 modelos populares |
-| Query < 2 chars | Array vazio |
+| Condição         | Resultado                     |
+| ---------------- | ----------------------------- |
+| Query vazio      | 8 modelos populares           |
+| Query < 2 chars  | Array vazio                   |
 | Query >= 2 chars | Busca no Supabase com `ilike` |
-| Durante busca | `loading: true` |
+| Durante busca    | `loading: true`               |
 
 ### Integração na Página
+
 ```tsx
 const [searchQuery, setSearchQuery] = useState("");
 const { results: filteredModels, loading: searchLoading } = usePrinterModelSearch(searchQuery);
@@ -293,18 +327,21 @@ const { results: filteredModels, loading: searchLoading } = usePrinterModelSearc
 ## 📁 Arquivos Criados/Modificados
 
 ### 1. **`lib/hooks/useUserCostSettings.ts`** ✨ NOVO
+
 - Hook para gerenciar custos do usuário
 - Fallback inteligente: profile → settings → 0.95
 - Função helper `calcEnergyCostPerHour()`
 - Retorna: `kwhCost`, `defaultMachineHourCost`, `profileName`, `loading`, `error`
 
 ### 2. **`lib/hooks/usePrinterModelSearch.ts`** ✨ NOVO
+
 - Hook dedicado para busca de modelos
 - Debounce automático de 300ms
 - Query com `.or()` no Supabase
 - Retorna 8 modelos populares quando query vazio
 
 ### 3. **`app/dashboard/impressoras/page.tsx`** 🔄 MODIFICADO
+
 - Imports atualizados (novos hooks)
 - Novo tipo `FormErrors`
 - Estado `formErrors` para validações
@@ -325,12 +362,14 @@ const { results: filteredModels, loading: searchLoading } = usePrinterModelSearc
 ## 🧪 Como Testar
 
 ### Teste 1: Modal Não Fecha em Erro
+
 1. Abrir "Nova Impressora" → Manual
 2. Deixar nome vazio, watts = 0
 3. Clicar "Salvar"
 4. ✅ **Esperado:** Modal permanece aberto, campos com borda vermelha, mensagens de erro aparecem
 
 ### Teste 2: Validação Brand/Model
+
 1. Preencher nome: "Teste"
 2. Preencher marca: "Bambu Lab"
 3. Deixar modelo vazio
@@ -338,6 +377,7 @@ const { results: filteredModels, loading: searchLoading } = usePrinterModelSearc
 5. ✅ **Esperado:** Erro "Informe o modelo ou deixe marca vazia"
 
 ### Teste 3: Preview em Tempo Real
+
 1. Abrir "Nova Impressora" → Manual
 2. Digite watts: 150
 3. ✅ **Esperado:** Aparecer box verde "💡 Energia estimada: R$ 0.14/h" (se kWh = 0.95)
@@ -345,18 +385,21 @@ const { results: filteredModels, loading: searchLoading } = usePrinterModelSearc
 5. ✅ **Esperado:** Atualizar para "R$ 0.29/h"
 
 ### Teste 4: Aviso de Custo Padrão
+
 1. Se `default_kwh_cost` não configurado
 2. ✅ **Esperado:** Box azul "Usando custo padrão. Configurar no perfil →"
 3. Clicar no link
 4. ✅ **Esperado:** Ir para `/dashboard/perfil`
 
 ### Teste 5: Custo nos Cards
+
 1. Cadastrar impressora com 200W
 2. ✅ **Esperado:** Card mostra "💡 Energia: R$ X.XX/h"
 3. Editar e adicionar `machine_hour_cost_override = 5.00`
 4. ✅ **Esperado:** Card muda para "💰 Custo/h (override): R$ 5.00/h"
 
 ### Teste 6: Modal Não Fecha Durante Save
+
 1. Abrir modal, preencher dados
 2. Clicar "Salvar"
 3. Durante salvamento:
@@ -369,6 +412,7 @@ const { results: filteredModels, loading: searchLoading } = usePrinterModelSearc
    - ✅ Modal fecha automaticamente
 
 ### Teste 7: Busca com Debounce
+
 1. Abrir "Escolher Modelo"
 2. Digitar rapidamente "BambuLab"
 3. ✅ **Esperado:** Apenas 1 query após 300ms de inatividade
@@ -379,22 +423,23 @@ const { results: filteredModels, loading: searchLoading } = usePrinterModelSearc
 
 ## 📊 Métricas de Qualidade
 
-| Métrica | Antes | Depois |
-|---------|-------|--------|
-| Modal fecha em erro | ❌ Sim | ✅ Não |
-| Validações inline | ❌ Não | ✅ Sim |
-| Preview de custo | ❌ Não | ✅ Sim |
+| Métrica               | Antes        | Depois          |
+| --------------------- | ------------ | --------------- |
+| Modal fecha em erro   | ❌ Sim       | ✅ Não          |
+| Validações inline     | ❌ Não       | ✅ Sim          |
+| Preview de custo      | ❌ Não       | ✅ Sim          |
 | Queries por digitação | 🔴 N (flood) | ✅ 1 (debounce) |
-| Feedback visual | 🟡 Básico | ✅ Completo |
-| Hierarquia de custos | ❌ Não | ✅ 3 níveis |
-| Links para config | ❌ Não | ✅ Sim |
-| Erro geral vs campo | ❌ Alert | ✅ Inline |
+| Feedback visual       | 🟡 Básico    | ✅ Completo     |
+| Hierarquia de custos  | ❌ Não       | ✅ 3 níveis     |
+| Links para config     | ❌ Não       | ✅ Sim          |
+| Erro geral vs campo   | ❌ Alert     | ✅ Inline       |
 
 ---
 
 ## 🎯 Benefícios Entregues
 
 ### Para o Usuário
+
 1. ✅ **Não perde dados** - Modal não fecha acidentalmente
 2. ✅ **Feedback imediato** - Vê o custo estimado em tempo real
 3. ✅ **Validação clara** - Sabe exatamente o que corrigir
@@ -402,6 +447,7 @@ const { results: filteredModels, loading: searchLoading } = usePrinterModelSearc
 5. ✅ **Diferenciação visual** - Override vs energia claramente identificados
 
 ### Para o Sistema
+
 1. ✅ **Código modular** - Hooks especializados reutilizáveis
 2. ✅ **Performance** - Debounce automático reduz queries
 3. ✅ **Fallback inteligente** - Sistema sempre funciona mesmo sem config
@@ -418,24 +464,24 @@ graph TD
     B -->|Model| C[Buscar com debounce]
     B -->|Quick| D[Selecionar preset]
     B -->|Manual| E[Preencher form]
-    
+
     C --> F[Preview custo]
     D --> F
     E --> F
-    
+
     F --> G[Clicar Salvar]
     G --> H[validateForm]
     H -->|Erro| I[Mostrar erros inline]
     I --> E
-    
+
     H -->|OK| J[setSaving true]
     J --> K[Desabilitar botões]
     K --> L[Inserir no Supabase]
-    
+
     L -->|Erro| M[setFormErrors general]
     M --> N[Modal permanece aberto]
     N --> O[setSaving false]
-    
+
     L -->|Sucesso| P[loadPrinters]
     P --> Q[Alert com custo]
     Q --> R[setShowModal false]
@@ -521,6 +567,7 @@ type UserCostSettings = {
 ## 🚀 Próximos Passos Sugeridos
 
 ### Melhorias Opcionais
+
 - [ ] Toast notifications em vez de `alert()`
 - [ ] Animações de entrada/saída dos erros
 - [ ] Validação assíncrona (ex: verificar nome duplicado)
@@ -530,6 +577,7 @@ type UserCostSettings = {
 - [ ] Batch import de impressoras
 
 ### Otimizações
+
 - [ ] Cache de `useUserCostSettings` no localStorage
 - [ ] Prefetch de modelos populares
 - [ ] Virtual scrolling na lista de modelos

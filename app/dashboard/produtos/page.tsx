@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
@@ -55,7 +55,12 @@ export default function ProdutosPage() {
   const [materialMappings, setMaterialMappings] = useState<MaterialMapping[]>(
     [],
   );
+  const [thumbnailBase64, setThumbnailBase64] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [showManualFallback, setShowManualFallback] = useState(false);
+  const [manualTimeHours, setManualTimeHours] = useState(0);
+  const [manualWeightGrams, setManualWeightGrams] = useState(0);
 
   // Quick Mode State
   const [quickForm, setQuickForm] = useState<QuickFormData>({
@@ -73,14 +78,16 @@ export default function ProdutosPage() {
     materials: [],
   });
 
+  // Additional Costs State (aplicável a todos os modos)
+  const [embalagemCost, setEmbalagemCost] = useState(0);
+  const [etiquetaCost, setEtiquetaCost] = useState(0);
+  const [marketplaceFeePercent, setMarketplaceFeePercent] = useState(0);
+  const [customMarginPercent, setCustomMarginPercent] = useState(50);
+
+
   // Products List
   const [products, setProducts] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
-
-  // Load products on mount
-  useState(() => {
-    loadProducts();
-  });
 
   const loadProducts = async () => {
     try {
@@ -100,28 +107,140 @@ export default function ProdutosPage() {
     }
   };
 
+  // Load products on mount
+  useEffect(() => {
+    if (user) {
+      loadProducts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   // === 3MF MODE HANDLERS ===
-  const handle3mfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  /**
+   * Handler genérico para .gcode (recomendado) e .3mf
+   */
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const isGCode = file.name.toLowerCase().endsWith('.gcode');
+    const is3mf = file.name.toLowerCase().endsWith('.3mf');
+
+    if (!isGCode && !is3mf) {
+      setUploadError('Arquivo deve ser .gcode ou .3mf');
+      return;
+    }
+
     try {
       setUploading(true);
-      const data = await parse3mfFile(file);
-      setProjectData(data);
+      setUploadError(null);
+      setShowManualFallback(false);
+
+      // Chamar API route apropriada
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const endpoint = isGCode ? '/api/gcode/extract' : '/api/3mf/extract';
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao processar arquivo');
+      }
+
+      const data = await response.json();
+
+      console.log(`✅ Dados extraídos do ${isGCode ? 'GCode' : '3MF'}:`, data);
+
+      // AVISO: se enviou .3mf mas não tem breakdown de materiais
+      if (is3mf && (!data.materials || data.materials.length === 0)) {
+        setUploadError(
+          '⚠️ .3mf não contém breakdown de materiais. Para melhor precisão, exporte o .gcode do fatiador!'
+        );
+      }
+
+      // Armazenar thumbnail se disponível (só .3mf tem)
+      if (data.thumbnail_base64) {
+        setThumbnailBase64(data.thumbnail_base64);
+        console.log('🖼️ Thumbnail capturado com sucesso');
+      }
+
+      // Verificar se conseguiu extrair tempo e peso
+      const hasTime = data.estimated_time_minutes !== null;
+      const hasWeight = data.total_weight_grams !== null;
+      const hasMaterials = data.materials && data.materials.length > 0;
+
+      // Definir valores iniciais de fallback
+      let fallbackTimeHours = 0;
+      let fallbackWeightGrams = 0;
+
+      if (!hasTime || !hasWeight) {
+        // Mostrar fallback manual
+        setShowManualFallback(true);
+        setUploadError(
+          'Não foi possível extrair tempo/peso automaticamente. Informe manualmente abaixo.'
+        );
+
+        // Se tiver dados parciais, usar como inicial
+        if (hasTime) {
+          fallbackTimeHours = data.estimated_time_minutes / 60;
+          setManualTimeHours(fallbackTimeHours);
+        }
+        if (hasWeight) {
+          fallbackWeightGrams = data.total_weight_grams;
+          setManualWeightGrams(fallbackWeightGrams);
+        }
+      }
+
+      // Montar ProjectData
+      const projectDataResult: ProjectData3mf = {
+        name: data.name,
+        totalTime: hasTime ? data.estimated_time_minutes / 60 : fallbackTimeHours,
+        totalWeight: hasWeight ? data.total_weight_grams : fallbackWeightGrams,
+        materials: hasMaterials
+          ? data.materials.map((mat: any) => ({
+              name: isGCode ? mat.name : mat.material_type,
+              color: isGCode ? (mat.color || '#CCCCCC') : mat.color_hex,
+              weight: isGCode ? mat.weight_grams : mat.weight_grams,
+            }))
+          : [],
+      };
+
+      setProjectData(projectDataResult);
 
       // Initialize material mappings
-      const mappings: MaterialMapping[] = data.materials.map((mat, index) => ({
-        materialIndex: index,
-        materialName: mat.name,
-        materialColor: mat.color,
-        weightGrams: mat.weight,
-        filamentId: null,
-      }));
-
-      setMaterialMappings(mappings);
+      if (hasMaterials) {
+        const mappings: MaterialMapping[] = data.materials.map(
+          (mat: any, index: number) => ({
+            materialIndex: index,
+            materialName: isGCode ? mat.name : mat.material_type,
+            materialColor: isGCode ? (mat.color || '#CCCCCC') : mat.color_hex,
+            weightGrams: isGCode ? mat.weight_grams : mat.weight_grams,
+            filamentId: null,
+          })
+        );
+        setMaterialMappings(mappings);
+        console.log(`🎨 ${mappings.length} materiais detectados!`);
+      } else if (hasWeight && data.total_weight_grams > 0) {
+        // Criar um material genérico se só tiver peso total
+        const mappings: MaterialMapping[] = [
+          {
+            materialIndex: 0,
+            materialName: 'Material Único',
+            materialColor: '#CCCCCC',
+            weightGrams: data.total_weight_grams,
+            filamentId: null,
+          },
+        ];
+        setMaterialMappings(mappings);
+      }
     } catch (err: any) {
-      alert(`Erro ao processar arquivo .3mf: ${err.message}`);
+      console.error('❌ Erro ao processar arquivo:', err);
+      setUploadError(err.message || 'Erro ao processar arquivo');
+      setShowManualFallback(true);
     } finally {
       setUploading(false);
     }
@@ -130,6 +249,29 @@ export default function ProdutosPage() {
   const updateMaterialMapping = (index: number, filamentId: string) => {
     setMaterialMappings((prev) =>
       prev.map((m, i) => (i === index ? { ...m, filamentId } : m)),
+    );
+  };
+
+  const add3mfMaterial = () => {
+    setMaterialMappings((prev) => [
+      ...prev,
+      {
+        materialIndex: prev.length,
+        materialName: `Material ${prev.length + 1}`,
+        materialColor: "#CCCCCC",
+        weightGrams: 0,
+        filamentId: null,
+      },
+    ]);
+  };
+
+  const remove3mfMaterial = (index: number) => {
+    setMaterialMappings((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const update3mfMaterialWeight = (index: number, weightGrams: number) => {
+    setMaterialMappings((prev) =>
+      prev.map((m, i) => (i === index ? { ...m, weightGrams } : m)),
     );
   };
 
@@ -224,17 +366,41 @@ export default function ProdutosPage() {
         ? manualForm.overrideEnergyCost
         : (timeHours * printerWatts * kwhCost) / 1000;
 
-    const totalCost = materialCost + energyCost;
-    const marginPercent = manualForm.customMarginPercent || 50;
-    const minimumPrice = totalCost * 1.2;
-    const suggestedPrice = totalCost * (1 + marginPercent / 100);
+    // Custos adicionais
+    const packagingCost = embalagemCost || 0;
+    const labelCost = etiquetaCost || 0;
+
+    // Custo base (sem marketplace fee)
+    const baseCost = materialCost + energyCost + packagingCost + labelCost;
+
+    // Calcular preço sugerido com margem
+    const marginPercent = customMarginPercent || 50;
+    const minimumPrice = baseCost * 1.2; // 20% mínimo
+    const suggestedPriceBeforeFee = baseCost * (1 + marginPercent / 100);
+
+    // Calcular marketplace fee SOBRE o preço de venda
+    const marketplaceFeeAmount = (suggestedPriceBeforeFee * marketplaceFeePercent) / 100;
+    
+    // Custo total REAL incluindo fee
+    const totalCost = baseCost + marketplaceFeeAmount;
+    
+    // Preço final sugerido (já considerando que a fee será deduzida)
+    const suggestedPrice = suggestedPriceBeforeFee;
+
+    // Lucro líquido = preço venda - custos - fee
+    const profitMargin = suggestedPrice - totalCost;
 
     return {
       materialCost,
       energyCost,
+      packagingCost,
+      labelCost,
+      marketplaceFeeAmount,
+      baseCost,
       totalCost,
       minimumPrice,
       suggestedPrice,
+      profitMargin,
       totalWeight,
       timeHours,
     };
@@ -247,8 +413,11 @@ export default function ProdutosPage() {
     if (mode === "3mf") {
       return (
         projectData &&
-        materialMappings.every((m) => m.filamentId) &&
-        materialMappings.length > 0
+        !showManualFallback && // Não permitir salvar enquanto fallback estiver ativo
+        materialMappings.every((m) => m.filamentId && m.weightGrams > 0) &&
+        materialMappings.length > 0 &&
+        projectData.totalTime > 0 &&
+        projectData.totalWeight > 0
       );
     } else if (mode === "quick") {
       return (
@@ -282,7 +451,7 @@ export default function ProdutosPage() {
       else if (mode === "quick") productName = quickForm.name;
       else productName = manualForm.name;
 
-      const { data: product, error: productError } = await supabase
+      const { data: product, error: productError} = await supabase
         .from("products")
         .insert({
           user_id: user!.id,
@@ -294,11 +463,12 @@ export default function ProdutosPage() {
           custo_energia: costs.energyCost,
           custo_total: costs.totalCost,
           preco_venda: costs.suggestedPrice,
-          margem_percentual:
-            mode === "manual" && manualForm.customMarginPercent
-              ? manualForm.customMarginPercent
-              : 50,
+          margem_percentual: customMarginPercent,
           status: "ativo",
+          thumbnail_url: thumbnailBase64,
+          embalagem_cost: embalagemCost,
+          etiqueta_cost: etiquetaCost,
+          marketplace_fee_percent: marketplaceFeePercent,
         })
         .select()
         .single();
@@ -347,6 +517,11 @@ export default function ProdutosPage() {
     setMode("3mf");
     setProjectData(null);
     setMaterialMappings([]);
+    setThumbnailBase64(null);
+    setUploadError(null);
+    setShowManualFallback(false);
+    setManualTimeHours(0);
+    setManualWeightGrams(0);
     setQuickForm({ name: "", timeHours: 0, weightGrams: 0, filamentId: "" });
     setManualForm({
       name: "",
@@ -354,6 +529,31 @@ export default function ProdutosPage() {
       timeHours: 0,
       materials: [],
     });
+    
+    // Reset novos campos de custo
+    setEmbalagemCost(0);
+    setEtiquetaCost(0);
+    setMarketplaceFeePercent(0);
+    setCustomMarginPercent(50);
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    if (!confirm("Tem certeza que deseja excluir este produto?")) return;
+
+    try {
+      const { error } = await supabase
+        .from("products")
+        .delete()
+        .eq("id", productId);
+
+      if (error) throw error;
+
+      alert("Produto excluído com sucesso!");
+      loadProducts();
+    } catch (err: any) {
+      console.error("Erro ao excluir produto:", err);
+      alert(`Erro ao excluir produto: ${err.message}`);
+    }
   };
 
   return (
@@ -392,35 +592,58 @@ export default function ProdutosPage() {
             {products.map((product) => (
               <div
                 key={product.id}
-                className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 hover:border-purple-600 transition-colors"
+                className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden hover:border-purple-600 transition-colors"
               >
-                <h3 className="text-xl font-bold mb-2">{product.nome}</h3>
-                {product.descricao && (
-                  <p className="text-gray-400 text-sm mb-4">
-                    {product.descricao}
-                  </p>
+                {/* Thumbnail */}
+                {product.thumbnail_url && (
+                  <div className="w-full h-48 bg-zinc-800">
+                    <img
+                      src={product.thumbnail_url}
+                      alt={product.nome}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
                 )}
 
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Tempo:</span>
-                    <span>{product.tempo_impressao_horas.toFixed(2)}h</span>
+                <div className="p-6">
+                  <h3 className="text-xl font-bold mb-2">{product.nome}</h3>
+                  {product.descricao && (
+                    <p className="text-gray-400 text-sm mb-4">
+                      {product.descricao}
+                    </p>
+                  )}
+
+                  <div className="space-y-2 text-sm mb-4">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Tempo:</span>
+                      <span>{product.tempo_impressao_horas.toFixed(2)}h</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Peso:</span>
+                      <span>{product.peso_usado.toFixed(0)}g</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Custo Total:</span>
+                      <span>R$ {product.custo_total.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-green-400">
+                      <span>Preço Venda:</span>
+                      <span>R$ {product.preco_venda.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-purple-400">
+                      <span>Margem:</span>
+                      <span>{product.margem_percentual.toFixed(0)}%</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Peso:</span>
-                    <span>{product.peso_usado.toFixed(0)}g</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Custo Total:</span>
-                    <span>R$ {product.custo_total.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-green-400">
-                    <span>Preço Venda:</span>
-                    <span>R$ {product.preco_venda.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-purple-400">
-                    <span>Margem:</span>
-                    <span>{product.margem_percentual.toFixed(0)}%</span>
+
+                  {/* Botões de Ação */}
+                  <div className="flex gap-2 pt-4 border-t border-zinc-800">
+                    <button
+                      onClick={() => handleDeleteProduct(product.id)}
+                      className="flex-1 px-3 py-2 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      🗑️ Excluir
+                    </button>
                   </div>
                 </div>
               </div>
@@ -516,19 +739,28 @@ export default function ProdutosPage() {
                       {!projectData ? (
                         <div>
                           <label className="block text-sm font-medium mb-2">
-                            Arquivo .3mf do Bambu Studio
+                            🎯 Arquivo .gcode (recomendado) ou .3mf
                           </label>
                           <input
                             type="file"
-                            accept=".3mf"
-                            onChange={handle3mfUpload}
+                            accept=".gcode,.3mf"
+                            onChange={handleFileUpload}
                             disabled={uploading}
                             className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-purple-600 disabled:opacity-50"
                           />
+                          <p className="text-xs text-gray-400 mt-2">
+                            💡 Para melhor precisão em multi-cor, exporte o <strong>.gcode</strong> do seu fatiador (Bambu Studio, Orca Slicer, Prusa).
+                          </p>
                           {uploading && (
-                            <p className="text-sm text-gray-400 mt-2">
-                              Processando arquivo...
-                            </p>
+                            <div className="flex items-center gap-2 text-sm text-blue-400 mt-2">
+                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-400 border-t-transparent"></div>
+                              <span>Extraindo dados...</span>
+                            </div>
+                          )}
+                          {uploadError && !uploading && (
+                            <div className="mt-3 p-3 bg-red-900/20 border border-red-500/50 rounded-lg">
+                              <p className="text-sm text-red-400">{uploadError}</p>
+                            </div>
                           )}
                         </div>
                       ) : (
@@ -562,56 +794,205 @@ export default function ProdutosPage() {
                             </div>
                           </div>
 
+                          {/* Fallback Manual - Se não conseguiu extrair tempo/peso */}
+                          {showManualFallback && (
+                            <div className="bg-yellow-900/20 border border-yellow-500/50 rounded-lg p-4 space-y-3">
+                              <h4 className="font-semibold text-yellow-400">
+                                ⚠️ Informações Incompletas
+                              </h4>
+                              <p className="text-sm text-yellow-200">
+                                O arquivo .3mf não contém todas as informações necessárias.
+                                Preencha os campos abaixo manualmente:
+                              </p>
+                              
+                              <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                  <label className="block text-sm font-medium mb-2">
+                                    Tempo de Impressão (horas) *
+                                  </label>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    value={manualTimeHours}
+                                    onChange={(e) =>
+                                      setManualTimeHours(parseFloat(e.target.value) || 0)
+                                    }
+                                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-purple-600"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-sm font-medium mb-2">
+                                    Peso Total (gramas) *
+                                  </label>
+                                  <input
+                                    type="number"
+                                    step="1"
+                                    value={manualWeightGrams}
+                                    onChange={(e) =>
+                                      setManualWeightGrams(parseFloat(e.target.value) || 0)
+                                    }
+                                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg focus:outline-none focus:border-purple-600"
+                                  />
+                                </div>
+                              </div>
+
+                              <button
+                                onClick={() => {
+                                  // Atualizar projectData com valores manuais
+                                  setProjectData((prev) => ({
+                                    ...prev!,
+                                    totalTime: manualTimeHours,
+                                    totalWeight: manualWeightGrams,
+                                  }));
+                                  setShowManualFallback(false);
+                                }}
+                                disabled={manualTimeHours <= 0 || manualWeightGrams <= 0}
+                                className="w-full py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-500 rounded-lg font-medium transition-colors"
+                              >
+                                Confirmar Valores Manuais
+                              </button>
+                            </div>
+                          )}
+
                           {/* Material Mapping */}
                           <div>
-                            <h4 className="font-semibold mb-3">
-                              Vincular Materiais aos Filamentos
-                            </h4>
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="font-semibold">
+                                Vincular Materiais aos Filamentos
+                              </h4>
+                              <button
+                                type="button"
+                                onClick={add3mfMaterial}
+                                className="text-sm px-3 py-1 bg-purple-600 hover:bg-purple-700 rounded-md transition-colors flex items-center gap-1"
+                              >
+                                <span className="text-lg">+</span>
+                                Adicionar Material
+                              </button>
+                            </div>
                             <div className="space-y-3">
                               {materialMappings.map((mapping, index) => (
                                 <div
                                   key={index}
-                                  className="bg-zinc-800 rounded-lg p-4 space-y-2"
+                                  className="bg-zinc-800 rounded-lg p-4 space-y-3"
                                 >
-                                  <div className="flex items-center gap-3">
+                                  <div className="flex items-start gap-3">
                                     <div
-                                      className="w-6 h-6 rounded-full border-2 border-white"
+                                      className="w-6 h-6 rounded-full border-2 border-white flex-shrink-0 mt-1"
                                       style={{
                                         backgroundColor: mapping.materialColor,
                                       }}
                                     />
-                                    <div className="flex-1">
-                                      <div className="font-medium">
-                                        {mapping.materialName}
+                                    <div className="flex-1 space-y-3">
+                                      <div className="flex items-center justify-between">
+                                        <div className="font-medium">
+                                          {mapping.materialName}
+                                        </div>
+                                        {materialMappings.length > 1 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => remove3mfMaterial(index)}
+                                            className="text-red-400 hover:text-red-300 text-sm transition-colors"
+                                          >
+                                            Remover
+                                          </button>
+                                        )}
                                       </div>
-                                      <div className="text-xs text-gray-400">
-                                        {mapping.weightGrams.toFixed(0)}g
+
+                                      {/* Peso do Material */}
+                                      <div>
+                                        <label className="text-xs text-gray-400 block mb-1">
+                                          Peso (gramas) *
+                                        </label>
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.1"
+                                          value={mapping.weightGrams}
+                                          onChange={(e) =>
+                                            update3mfMaterialWeight(
+                                              index,
+                                              parseFloat(e.target.value) || 0
+                                            )
+                                          }
+                                          className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg focus:outline-none focus:border-purple-600"
+                                          placeholder="Ex: 25.5"
+                                        />
                                       </div>
+
+                                      {/* Seletor de Filamento */}
+                                      <div>
+                                        <label className="text-xs text-gray-400 block mb-1">
+                                          Filamento do Estoque *
+                                        </label>
+                                        <select
+                                          value={mapping.filamentId || ""}
+                                          onChange={(e) =>
+                                            updateMaterialMapping(
+                                              index,
+                                              e.target.value,
+                                            )
+                                          }
+                                          className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg focus:outline-none focus:border-purple-600"
+                                        >
+                                          <option value="">
+                                            Selecione o filamento...
+                                          </option>
+                                          {filaments.map((fil) => (
+                                            <option key={fil.id} value={fil.id}>
+                                              {fil.nome} - {fil.marca} ({fil.tipo}) -
+                                              R$ {fil.custo_por_kg.toFixed(2)}/kg
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+
+                                      {/* Custo Calculado */}
+                                      {mapping.filamentId && (
+                                        <div className="text-xs text-purple-400 flex items-center justify-between bg-zinc-900 rounded px-2 py-1">
+                                          <span>Custo deste material:</span>
+                                          <span className="font-medium">
+                                            R${" "}
+                                            {(
+                                              (mapping.weightGrams / 1000) *
+                                              (filaments.find(
+                                                (f) => f.id === mapping.filamentId
+                                              )?.custo_por_kg || 0)
+                                            ).toFixed(2)}
+                                          </span>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
-
-                                  <select
-                                    value={mapping.filamentId || ""}
-                                    onChange={(e) =>
-                                      updateMaterialMapping(
-                                        index,
-                                        e.target.value,
-                                      )
-                                    }
-                                    className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg focus:outline-none focus:border-purple-600"
-                                  >
-                                    <option value="">
-                                      Selecione o filamento...
-                                    </option>
-                                    {filaments.map((fil) => (
-                                      <option key={fil.id} value={fil.id}>
-                                        {fil.nome} - {fil.marca} ({fil.tipo}) -
-                                        R$ {fil.custo_por_kg.toFixed(2)}/kg
-                                      </option>
-                                    ))}
-                                  </select>
                                 </div>
                               ))}
+
+                              {/* Custo Total de Materiais */}
+                              {materialMappings.length > 1 &&
+                                materialMappings.every((m) => m.filamentId) && (
+                                  <div className="bg-purple-900/30 border border-purple-700 rounded-lg p-3">
+                                    <div className="flex items-center justify-between text-sm">
+                                      <span className="text-purple-300 font-medium">
+                                        💰 Custo Total de Materiais:
+                                      </span>
+                                      <span className="text-purple-100 font-bold text-lg">
+                                        R${" "}
+                                        {materialMappings
+                                          .reduce((total, m) => {
+                                            const filament = filaments.find(
+                                              (f) => f.id === m.filamentId
+                                            );
+                                            return (
+                                              total +
+                                              (m.weightGrams / 1000) *
+                                                (filament?.custo_por_kg || 0)
+                                            );
+                                          }, 0)
+                                          .toFixed(2)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
                             </div>
                           </div>
                         </>
@@ -908,33 +1289,169 @@ export default function ProdutosPage() {
                     </>
                   )}
 
+                  {/* Seção de Custos Adicionais e Margem (comum a todos os modos) */}
+                  <details open className="bg-zinc-900 rounded-lg p-4 border border-zinc-800">
+                    <summary className="font-semibold cursor-pointer text-purple-400 mb-4">
+                      💳 Custos Adicionais e Margem
+                    </summary>
+                    
+                    <div className="space-y-4">
+                      {/* Grid de Custos Adicionais */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-400 mb-1">
+                            📦 Embalagem (R$)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={embalagemCost}
+                            onChange={(e) => setEmbalagemCost(parseFloat(e.target.value) || 0)}
+                            placeholder="0.00"
+                            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm focus:outline-none focus:border-purple-600"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-400 mb-1">
+                            🏷️ Etiqueta/Adesivo (R$)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={etiquetaCost}
+                            onChange={(e) => setEtiquetaCost(parseFloat(e.target.value) || 0)}
+                            placeholder="0.00"
+                            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm focus:outline-none focus:border-purple-600"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Taxa Marketplace e Margem */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-400 mb-1">
+                            🛒 Taxa Marketplace (%)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            max="100"
+                            value={marketplaceFeePercent}
+                            onChange={(e) => setMarketplaceFeePercent(parseFloat(e.target.value) || 0)}
+                            placeholder="Ex: 15 (Mercado Livre)"
+                            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm focus:outline-none focus:border-purple-600"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Mercado Livre: ~15%, Shopee: ~18%
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-400 mb-1">
+                            📊 Margem de Lucro (%)
+                          </label>
+                          <input
+                            type="number"
+                            step="5"
+                            min="0"
+                            value={customMarginPercent}
+                            onChange={(e) => setCustomMarginPercent(parseFloat(e.target.value) || 50)}
+                            placeholder="50"
+                            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm focus:outline-none focus:border-purple-600"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+
                   {/* Cost Preview */}
                   {canSave() && (
                     <div className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border border-purple-700/50 rounded-lg p-4">
                       <h4 className="font-semibold mb-3 text-purple-300">
                         💰 Previsão de Custos e Preço
                       </h4>
+
+                      {/* Detalhamento de Materiais (modo .3mf com múltiplos) */}
+                      {mode === "3mf" && materialMappings.length > 1 && (
+                        <div className="mb-4 space-y-2">
+                          <div className="text-xs font-medium text-purple-400 mb-2">
+                            Custo por Material:
+                          </div>
+                          {materialMappings.map((mapping, index) => {
+                            const filament = filaments.find(
+                              (f) => f.id === mapping.filamentId
+                            );
+                            const cost = filament
+                              ? (mapping.weightGrams / 1000) * filament.custo_por_kg
+                              : 0;
+                            return (
+                              <div
+                                key={index}
+                                className="flex items-center justify-between text-xs bg-zinc-900/50 rounded px-2 py-1"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="w-3 h-3 rounded-full border"
+                                    style={{ backgroundColor: mapping.materialColor }}
+                                  />
+                                  <span className="text-gray-400">
+                                    {mapping.materialName} ({mapping.weightGrams}g)
+                                  </span>
+                                </div>
+                                <span className="text-gray-300">
+                                  R$ {cost.toFixed(2)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          <div className="border-t border-purple-700/50 pt-2" />
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-gray-400">Material:</span>
+                          <span className="text-gray-400">💎 Material:</span>
                           <span>R$ {costs.materialCost.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-400">Energia:</span>
+                          <span className="text-gray-400">⚡ Energia:</span>
                           <span>R$ {costs.energyCost.toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between font-bold">
-                          <span className="text-gray-300">Custo Total:</span>
-                          <span>R$ {costs.totalCost.toFixed(2)}</span>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">📦 Embalagem:</span>
+                          <span>R$ {costs.packagingCost.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-400">Preço Mínimo:</span>
+                          <span className="text-gray-400">🏷️ Etiqueta:</span>
+                          <span>R$ {costs.labelCost.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-orange-400">
+                          <span>🛒 Fee Marketplace:</span>
+                          <span>R$ {costs.marketplaceFeeAmount.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between font-bold text-red-400">
+                          <span>💸 Custo TOTAL:</span>
+                          <span>R$ {costs.totalCost.toFixed(2)}</span>
+                        </div>
+                        <div className="col-span-2 border-t border-purple-700/50 pt-2" />
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Preço Mínimo (20%):</span>
                           <span>R$ {costs.minimumPrice.toFixed(2)}</span>
                         </div>
                         <div className="col-span-2 flex justify-between font-bold text-green-400">
-                          <span>Preço Sugerido:</span>
+                          <span>💰 Preço de Venda Sugerido:</span>
                           <span className="text-lg">
                             R$ {costs.suggestedPrice.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="col-span-2 flex justify-between text-purple-300">
+                          <span>💵 Lucro Líquido:</span>
+                          <span className="text-lg font-semibold">
+                            R$ {costs.profitMargin.toFixed(2)} ({((costs.profitMargin / costs.suggestedPrice) * 100).toFixed(1)}%)
                           </span>
                         </div>
                       </div>
