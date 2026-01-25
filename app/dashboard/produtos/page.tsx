@@ -983,8 +983,8 @@ export default function ProdutosPage() {
                               </li>
                               <li>Fatiar (Slice) o modelo normalmente</li>
                               <li>
-                                Clique em <strong>"Exportar G-code"</strong> ou{" "}
-                                <strong>"Exportar placa"</strong>
+                                Clique em <strong>&quot;Exportar G-code&quot;</strong> ou{" "}
+                                <strong>&quot;Exportar placa&quot;</strong>
                               </li>
                               <li>
                                 Salve o arquivo <strong>.gcode</strong>{" "}

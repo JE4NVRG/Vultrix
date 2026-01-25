@@ -94,26 +94,32 @@ export default function DashboardPage() {
       const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
 
       // Calcular saldo usando função do Supabase
-      const { data: balanceData, error: balanceError } = await supabase.rpc(
-        "calculate_balance",
-        {
-          p_user_id: user!.id,
-          p_data_inicio: primeiroDiaMes.toISOString().split("T")[0],
-          p_data_fim: ultimoDiaMes.toISOString().split("T")[0],
-        },
-      );
-
-      if (balanceError) {
-        console.error("Erro ao calcular saldo:", balanceError);
-      }
-
-      const balance: BalanceData = balanceData?.[0] || {
+      let balance: BalanceData = {
         total_vendas: 0,
         total_aportes: 0,
         total_despesas: 0,
         saldo_final: 0,
         receita_liquida: 0,
       };
+      
+      try {
+        const { data: balanceData, error: balanceError } = await supabase.rpc(
+          "calculate_balance",
+          {
+            p_user_id: user!.id,
+            p_data_inicio: primeiroDiaMes.toISOString().split("T")[0],
+            p_data_fim: ultimoDiaMes.toISOString().split("T")[0],
+          },
+        );
+
+        if (balanceError) {
+          console.warn("Função calculate_balance não disponível:", balanceError.message);
+        } else {
+          balance = balanceData?.[0] || balance;
+        }
+      } catch (rpcError) {
+        console.warn("Erro ao chamar calculate_balance (pode não existir):", rpcError);
+      }
 
       // Buscar vendas do mês
       const { data: salesData, error: salesError } = await supabase
@@ -236,8 +242,8 @@ export default function DashboardPage() {
         filamentoMaisConsumido,
         vendasPorDia,
       });
-    } catch (error) {
-      console.error("Erro ao carregar métricas:", error);
+    } catch (error: any) {
+      console.error("Erro ao carregar métricas:", error?.message || error?.details || JSON.stringify(error) || error);
     } finally {
       setLoading(false);
     }
