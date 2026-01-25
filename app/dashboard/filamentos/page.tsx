@@ -1805,12 +1805,84 @@ export default function FilamentosPage() {
     }
   };
 
+  // Função para criar despesa automaticamente ao cadastrar filamento
+  const createFilamentExpense = async (
+    items: Array<{
+      nome: string;
+      marca: string;
+      peso_kg: number;
+      custo_por_kg: number;
+      data_compra: string;
+    }>,
+    shippingTotal: number,
+    feesTotal: number
+  ) => {
+    if (!user || items.length === 0) return;
+
+    // Calcular valor total dos filamentos
+    const totalFilamentos = items.reduce((sum, item) => {
+      return sum + (item.custo_por_kg * item.peso_kg);
+    }, 0);
+
+    const valorTotal = totalFilamentos + shippingTotal + feesTotal;
+    
+    if (valorTotal <= 0) return;
+
+    // Criar descrição detalhada
+    const filamentosDesc = items.map(item => 
+      `${item.nome} (${item.marca}) - ${item.peso_kg.toFixed(2)}kg x R$${item.custo_por_kg.toFixed(2)}/kg`
+    ).join("; ");
+
+    let descricao = `Compra de filamento: ${filamentosDesc}`;
+    if (shippingTotal > 0) {
+      descricao += ` | Frete: R$${shippingTotal.toFixed(2)}`;
+    }
+    if (feesTotal > 0) {
+      descricao += ` | Taxas: R$${feesTotal.toFixed(2)}`;
+    }
+
+    // Usar a data do primeiro item ou hoje
+    const dataCompra = items[0]?.data_compra || new Date().toISOString().split("T")[0];
+
+    try {
+      await supabase.from("expenses").insert({
+        user_id: user.id,
+        categoria: "material",
+        descricao: descricao,
+        valor: valorTotal,
+        data: dataCompra,
+        recorrente: false,
+      });
+      console.log("✅ Despesa de filamento criada:", valorTotal);
+    } catch (error) {
+      console.error("Erro ao criar despesa de filamento:", error);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!user) return;
 
     try {
       if (restockTarget) {
         await handleRestockSave();
+        
+        // Criar despesa para reposição
+        if (restockForm.weight > 0 && restockCostPreview.baseCostPerKg > 0) {
+          const valorFilamento = (restockForm.weight / 1000) * restockCostPreview.baseCostPerKg;
+          const brand = brands.find((b) => b.id === restockTarget.brand_id);
+          await createFilamentExpense(
+            [{
+              nome: restockTarget.nome,
+              marca: brand?.name || restockTarget.marca || "Sem marca",
+              peso_kg: restockForm.weight / 1000,
+              custo_por_kg: restockCostPreview.baseCostPerKg,
+              data_compra: restockForm.purchaseDate,
+            }],
+            restockCostPreview.shippingShare || 0,
+            restockCostPreview.feeShare || 0
+          );
+        }
+        
         handleCloseModal();
         loadData();
         return;
@@ -1826,6 +1898,7 @@ export default function FilamentosPage() {
           individualCostBreakdown,
         );
         await supabase.from("filaments").update(payload).eq("id", editingId);
+        // Não cria despesa ao editar, apenas ao adicionar novo
       } else if (formMode === "single") {
         if (!validateIndividualItems()) {
           alert("Preencha nome e marca para todos os filamentos");
@@ -1835,6 +1908,23 @@ export default function FilamentosPage() {
           buildPayloadFromIndividual(item, individualCostBreakdown),
         );
         await supabase.from("filaments").insert(payloads);
+        
+        // Criar despesas para cada filamento individual
+        const itemsForExpense = individualItems.map((item) => {
+          const brand = brands.find((b) => b.id === item.brand_id);
+          return {
+            nome: item.nome,
+            marca: brand?.name || "Sem marca",
+            peso_kg: item.peso_atual / 1000,
+            custo_por_kg: item.custo_por_kg,
+            data_compra: item.data_compra,
+          };
+        });
+        await createFilamentExpense(
+          itemsForExpense,
+          individualCostBreakdown.shippingTotal,
+          individualCostBreakdown.feesTotal
+        );
       } else {
         if (!validateBatchItems()) {
           alert("Preencha marca, data e nomes dos itens do lote");
@@ -1844,6 +1934,21 @@ export default function FilamentosPage() {
           buildPayloadFromBatch(item, batchCostBreakdown),
         );
         await supabase.from("filaments").insert(payloads);
+        
+        // Criar despesa para lote
+        const brand = brands.find((b) => b.id === sharedPurchase.brand_id);
+        const itemsForExpense = batchItems.map((item) => ({
+          nome: item.nome,
+          marca: brand?.name || "Sem marca",
+          peso_kg: item.peso_atual / 1000,
+          custo_por_kg: item.custo_por_kg,
+          data_compra: sharedPurchase.data_compra,
+        }));
+        await createFilamentExpense(
+          itemsForExpense,
+          batchCostBreakdown.shippingTotal,
+          batchCostBreakdown.feesTotal
+        );
       }
 
       handleCloseModal();
