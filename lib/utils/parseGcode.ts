@@ -120,41 +120,56 @@ function extractEstimatedTime(
   headerText: string,
   result: GCodeParseResult,
 ): void {
-  const timePatterns = [
-    // Bambu/Orca: "; estimated printing time (normal mode) = 2h 34m 15s"
-    /;\s*estimated printing time[^=]*=\s*(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?/i,
+  // Padrão 1: "Xh Ym Zs" ou "Xh Ym" ou "Ym Zs" - ordem e formato variados
+  // Bambu/Orca: "; estimated printing time (normal mode) = 2h 34m 15s"
+  const hmsPattern = /;\s*(?:estimated printing time|total estimated time)[^=]*=\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*(?:(\d+)\s*s)?/i;
+  const hmsMatch = headerText.match(hmsPattern);
+  if (hmsMatch && (hmsMatch[1] || hmsMatch[2] || hmsMatch[3])) {
+    const hours = parseInt(hmsMatch[1] || "0");
+    const minutes = parseInt(hmsMatch[2] || "0");
+    const seconds = parseInt(hmsMatch[3] || "0");
+    result.estimated_time_minutes = hours * 60 + minutes + Math.round(seconds / 60);
+    if (result.estimated_time_minutes > 0) return;
+  }
 
-    // Prusa: "; estimated printing time = 1h 23m 45s"
-    /;\s*estimated printing time\s*=\s*(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?/i,
+  // Padrão 2: Formato com vírgula/ponto decimal para minutos
+  // "; estimated printing time = 154.5min"
+  const minDecPattern = /;\s*(?:estimated printing time|print time)[^=]*=\s*(\d+\.?\d*)\s*min/i;
+  const minDecMatch = headerText.match(minDecPattern);
+  if (minDecMatch) {
+    result.estimated_time_minutes = Math.round(parseFloat(minDecMatch[1]));
+    if (result.estimated_time_minutes > 0) return;
+  }
 
-    // Formato alternativo: "; TIME:7425" (segundos)
-    /;\s*TIME:\s*(\d+)/i,
+  // Padrão 3: TIME em segundos (Cura e outros)
+  // "; TIME:7425"
+  const timeSecsPattern = /;\s*TIME:\s*(\d+)/i;
+  const timeSecsMatch = headerText.match(timeSecsPattern);
+  if (timeSecsMatch) {
+    const totalSeconds = parseInt(timeSecsMatch[1]);
+    result.estimated_time_minutes = Math.round(totalSeconds / 60);
+    if (result.estimated_time_minutes > 0) return;
+  }
 
-    // Cura: ";TIME:12345"
-    /;\s*TIME:\s*(\d+)/i,
-  ];
+  // Padrão 4: Formato Bambu "total estimated time" separado
+  // "; total estimated time = 12345" (segundos)
+  const totalTimePattern = /;\s*total estimated time\s*[:=]\s*(\d+)/i;
+  const totalTimeMatch = headerText.match(totalTimePattern);
+  if (totalTimeMatch) {
+    result.estimated_time_minutes = Math.round(parseInt(totalTimeMatch[1]) / 60);
+    if (result.estimated_time_minutes > 0) return;
+  }
 
-  for (const pattern of timePatterns) {
-    const match = headerText.match(pattern);
-    if (match) {
-      if (
-        match[1] !== undefined &&
-        (match[2] !== undefined || match[3] !== undefined)
-      ) {
-        // Formato "Xh Ym Zs"
-        const hours = parseInt(match[1] || "0");
-        const minutes = parseInt(match[2] || "0");
-        const seconds = parseInt(match[3] || "0");
-        result.estimated_time_minutes =
-          hours * 60 + minutes + Math.round(seconds / 60);
-        return;
-      } else if (match[1] && !match[2]) {
-        // Formato "TIME:XXXXX" (segundos)
-        const totalSeconds = parseInt(match[1]);
-        result.estimated_time_minutes = Math.round(totalSeconds / 60);
-        return;
-      }
-    }
+  // Padrão 5: Formato separado por ":" (HH:MM:SS)
+  // "; Print Time: 02:34:15"
+  const colonPattern = /;\s*(?:print time|estimated time)\s*[:=]\s*(\d+):(\d+):(\d+)/i;
+  const colonMatch = headerText.match(colonPattern);
+  if (colonMatch) {
+    const hours = parseInt(colonMatch[1]);
+    const minutes = parseInt(colonMatch[2]);
+    const seconds = parseInt(colonMatch[3]);
+    result.estimated_time_minutes = hours * 60 + minutes + Math.round(seconds / 60);
+    return;
   }
 }
 
@@ -162,12 +177,18 @@ function extractEstimatedTime(
  * Extrai materiais e pesos (multi-filamento)
  */
 function extractMaterials(headerText: string, result: GCodeParseResult): void {
-  // ESTRATÉGIA 1: Bambu/Orca com breakdown por filamento
+  // ESTRATÉGIA 1: Bambu/Orca com breakdown por filamento (mais comum)
   // "; filament used [g] = 12.34, 23.45, 34.56"
   // "; filament used [mm] = 4123.45, 8234.56"
-  const weightBreakdown = headerText.match(
+  let weightBreakdown = headerText.match(
     /;\s*filament used \[g\]\s*=\s*([0-9., ]+)/i,
   );
+  
+  // Formato alternativo Bambu: "; filament_used_g = 12.34"
+  if (!weightBreakdown) {
+    weightBreakdown = headerText.match(/;\s*filament_used_g\s*=\s*([0-9., ]+)/i);
+  }
+  
   const lengthBreakdown = headerText.match(
     /;\s*filament used \[mm\]\s*=\s*([0-9., ]+)/i,
   );
@@ -176,7 +197,7 @@ function extractMaterials(headerText: string, result: GCodeParseResult): void {
     const weights = weightBreakdown[1]
       .split(",")
       .map((w) => parseFloat(w.trim()))
-      .filter((w) => !isNaN(w));
+      .filter((w) => !isNaN(w) && w > 0);
     const lengths = lengthBreakdown
       ? lengthBreakdown[1]
           .split(",")
@@ -184,29 +205,34 @@ function extractMaterials(headerText: string, result: GCodeParseResult): void {
           .filter((l) => !isNaN(l))
       : [];
 
-    weights.forEach((weight, index) => {
-      result.materials.push({
-        slot_index: index + 1,
-        name: `Filamento ${index + 1}`,
-        type: "PLA", // Default, pode ser sobrescrito
-        weight_grams: weight,
-        length_m: lengths[index],
+    if (weights.length > 0) {
+      weights.forEach((weight, index) => {
+        result.materials.push({
+          slot_index: index + 1,
+          name: `Filamento ${index + 1}`,
+          type: "PLA", // Default, pode ser sobrescrito
+          weight_grams: weight,
+          length_m: lengths[index],
+        });
       });
-    });
 
-    result.total_weight_grams = weights.reduce((sum, w) => sum + w, 0);
+      result.total_weight_grams = weights.reduce((sum, w) => sum + w, 0);
+    }
   }
 
   // ESTRATÉGIA 2: Bambu/Orca com tipos de filamento
-  // "; filament_type = PLA;PLA;PETG"
-  const filamentTypes = headerText.match(/;\s*filament_type\s*=\s*([^;\n]+)/i);
-  if (filamentTypes && result.materials.length > 0) {
-    const types = filamentTypes[1].split(";").map((t) => t.trim());
-    result.materials.forEach((mat, index) => {
-      if (types[index]) {
-        mat.type = types[index];
-      }
-    });
+  // "; filament_type = PLA;PLA;PETG" ou "; filament_type = PLA, PLA, PETG"
+  if (result.materials.length > 0) {
+    const filamentTypes = headerText.match(/;\s*filament_type\s*=\s*([^\n]+)/i);
+    if (filamentTypes) {
+      // Pode usar ; ou , como separador
+      const types = filamentTypes[1].split(/[;,]/).map((t) => t.trim()).filter(t => t.length > 0);
+      result.materials.forEach((mat, index) => {
+        if (types[index]) {
+          mat.type = types[index];
+        }
+      });
+    }
   }
 
   // ESTRATÉGIA 3: Peso total único (sem breakdown)
@@ -214,13 +240,21 @@ function extractMaterials(headerText: string, result: GCodeParseResult): void {
     const totalWeightPatterns = [
       /;\s*total filament used \[g\]\s*=\s*(\d+\.?\d*)/i,
       /;\s*filament used\s*=\s*(\d+\.?\d*)\s*g/i,
-      /;\s*Filament used:\s*(\d+\.?\d*)g/i,
+      /;\s*Filament used:\s*(\d+\.?\d*)\s*g/i,
+      /;\s*filament_weight_g\s*=\s*(\d+\.?\d*)/i,
+      /;\s*FILAMENT_USED:\s*(\d+\.?\d*)/i,
+      // Cura: "; Filament used: 1.23456m" (converter metros para gramas)
+      /;\s*Filament used:\s*(\d+\.?\d*)m/i,
     ];
 
     for (const pattern of totalWeightPatterns) {
       const match = headerText.match(pattern);
       if (match) {
-        const weight = parseFloat(match[1]);
+        let weight = parseFloat(match[1]);
+        // Se for em metros, converter para gramas (assumindo PLA 1.75mm: ~3g/m)
+        if (pattern.source.includes('m/i')) {
+          weight = weight * 3;
+        }
         if (!isNaN(weight) && weight > 0) {
           result.total_weight_grams = weight;
           result.materials.push({
@@ -235,18 +269,43 @@ function extractMaterials(headerText: string, result: GCodeParseResult): void {
     }
   }
 
-  // ESTRATÉGIA 4: Bambu/Orca com nomes de filamento
+  // ESTRATÉGIA 4: Calcular peso a partir do comprimento se não tiver peso
+  if (result.materials.length === 0 && lengthBreakdown) {
+    const lengths = lengthBreakdown[1]
+      .split(",")
+      .map((l) => parseFloat(l.trim()) / 1000) // mm para metros
+      .filter((l) => !isNaN(l) && l > 0);
+    
+    if (lengths.length > 0) {
+      // PLA 1.75mm: ~3g por metro
+      lengths.forEach((lengthM, index) => {
+        const weight = lengthM * 3; // Aproximação
+        result.materials.push({
+          slot_index: index + 1,
+          name: `Filamento ${index + 1}`,
+          type: "PLA",
+          weight_grams: Math.round(weight * 100) / 100,
+          length_m: lengthM,
+        });
+      });
+      result.total_weight_grams = result.materials.reduce((sum, m) => sum + m.weight_grams, 0);
+    }
+  }
+
+  // ESTRATÉGIA 5: Bambu/Orca com nomes de filamento
   // "; filament_settings_id = Generic PLA @BBL X1C;Bambu PLA Basic @BBL X1C"
-  const filamentNames = headerText.match(
-    /;\s*filament_settings_id\s*=\s*([^;\n]+)/i,
-  );
-  if (filamentNames && result.materials.length > 0) {
-    const names = filamentNames[1].split(";").map((n) => n.trim());
-    result.materials.forEach((mat, index) => {
-      if (names[index]) {
-        mat.name = names[index].replace(/@.*$/, "").trim();
-      }
-    });
+  if (result.materials.length > 0) {
+    const filamentNames = headerText.match(
+      /;\s*filament_settings_id\s*=\s*([^\n]+)/i,
+    );
+    if (filamentNames) {
+      const names = filamentNames[1].split(/[;,]/).map((n) => n.trim()).filter(n => n.length > 0);
+      result.materials.forEach((mat, index) => {
+        if (names[index]) {
+          mat.name = names[index].replace(/@.*$/, "").trim();
+        }
+      });
+    }
   }
 }
 

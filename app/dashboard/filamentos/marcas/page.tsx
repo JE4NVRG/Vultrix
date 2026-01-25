@@ -26,13 +26,19 @@ export default function FilamentBrandManager() {
     if (!user) return;
     setLoading(true);
     try {
-      const [{ data: brandData, error: brandError }, { data: filamentData, error: filamentError }] = await Promise.all([
+      const [
+        { data: brandData, error: brandError },
+        { data: filamentData, error: filamentError },
+      ] = await Promise.all([
         supabase
           .from("filament_brands")
           .select("*")
           .eq("user_id", user.id)
           .order("name", { ascending: true }),
-        supabase.from("filaments").select("id, brand_id").eq("user_id", user.id),
+        supabase
+          .from("filaments")
+          .select("id, brand_id")
+          .eq("user_id", user.id),
       ]);
 
       if (brandError) throw brandError;
@@ -108,7 +114,9 @@ export default function FilamentBrandManager() {
       await loadData();
     } catch (error) {
       console.error("Erro ao mesclar marcas", error);
-      alert("Não foi possível concluir a mescla. Verifique os dados e tente novamente.");
+      alert(
+        "Não foi possível concluir a mescla. Verifique os dados e tente novamente.",
+      );
     } finally {
       setSavingOrigin(null);
     }
@@ -125,7 +133,9 @@ export default function FilamentBrandManager() {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-vultrix-light/80">Faça login para gerenciar suas marcas.</p>
+        <p className="text-vultrix-light/80">
+          Faça login para gerenciar suas marcas.
+        </p>
       </div>
     );
   }
@@ -134,10 +144,15 @@ export default function FilamentBrandManager() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-vultrix-light/70">Filamentos</p>
-          <h1 className="text-3xl font-bold text-white">Unificar marcas semelhantes</h1>
+          <p className="text-sm uppercase tracking-[0.2em] text-vultrix-light/70">
+            Filamentos
+          </p>
+          <h1 className="text-3xl font-bold text-white">
+            Unificar marcas semelhantes
+          </h1>
           <p className="text-vultrix-light/70">
-            Centralize variações de nome e deixe o catálogo pronto para o fluxo inteligente de compra.
+            Centralize variações de nome e deixe o catálogo pronto para o fluxo
+            inteligente de compra.
           </p>
         </div>
         <Link
@@ -152,10 +167,13 @@ export default function FilamentBrandManager() {
         <div className="flex items-start gap-3">
           <AlertTriangle className="text-yellow-400 mt-1" size={20} />
           <div>
-            <p className="text-white font-semibold">Organização agora, IA depois</p>
+            <p className="text-white font-semibold">
+              Organização agora, IA depois
+            </p>
             <p className="text-sm text-vultrix-light/70">
-              Estamos preparando uma automação com IA para detectar duplicidades em massa. Enquanto isso, use esta tela para
-              consolidar manualmente e manter os relatórios coerentes.
+              Estamos preparando uma automação com IA para detectar duplicidades
+              em massa. Enquanto isso, use esta tela para consolidar manualmente
+              e manter os relatórios coerentes.
             </p>
           </div>
         </div>
@@ -165,7 +183,9 @@ export default function FilamentBrandManager() {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 border-b border-vultrix-gray/40">
           <div>
             <p className="text-white font-semibold">Todas as marcas</p>
-            <p className="text-sm text-vultrix-light/60">{brands.length} cadastradas · {filteredBrands.length} visíveis</p>
+            <p className="text-sm text-vultrix-light/60">
+              {brands.length} cadastradas · {filteredBrands.length} visíveis
+            </p>
           </div>
           <div className="flex gap-3">
             <div className="relative">
@@ -176,7 +196,10 @@ export default function FilamentBrandManager() {
                 onChange={(event) => setSearch(event.target.value)}
                 className="pl-4 pr-10 py-2 rounded-lg bg-vultrix-dark border border-vultrix-gray/60 text-white placeholder:text-vultrix-light/50 focus:outline-none focus:ring-1 focus:ring-vultrix-accent"
               />
-              <GitMerge size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-vultrix-light/50" />
+              <GitMerge
+                size={16}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-vultrix-light/50"
+              />
             </div>
             <button
               onClick={loadData}
@@ -190,29 +213,43 @@ export default function FilamentBrandManager() {
         <div className="p-4 space-y-4">
           {brands.length <= 1 && !loading ? (
             <div className="text-center py-12 border border-dashed border-vultrix-gray/40 rounded-xl">
-              <p className="text-white font-semibold">Cadastre pelo menos duas marcas</p>
-              <p className="text-sm text-vultrix-light/70">Assim que houver duplicidades, você poderá unificá-las aqui.</p>
+              <p className="text-white font-semibold">
+                Cadastre pelo menos duas marcas
+              </p>
+              <p className="text-sm text-vultrix-light/70">
+                Assim que houver duplicidades, você poderá unificá-las aqui.
+              </p>
             </div>
           ) : loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[...Array(4)].map((_, index) => (
-                <div key={index} className="border border-vultrix-gray/40 rounded-xl p-4 animate-pulse bg-vultrix-dark/60 h-32" />
+                <div
+                  key={index}
+                  className="border border-vultrix-gray/40 rounded-xl p-4 animate-pulse bg-vultrix-dark/60 h-32"
+                />
               ))}
             </div>
           ) : filteredBrands.length === 0 ? (
             <div className="text-center py-12 border border-dashed border-vultrix-gray/40 rounded-xl">
               <p className="text-white font-semibold">Nada encontrado</p>
-              <p className="text-sm text-vultrix-light/70">Ajuste o termo de busca ou limpe o filtro.</p>
+              <p className="text-sm text-vultrix-light/70">
+                Ajuste o termo de busca ou limpe o filtro.
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredBrands.map((brand) => {
-                const selectableTargets = brands.filter((option) => option.id !== brand.id);
+                const selectableTargets = brands.filter(
+                  (option) => option.id !== brand.id,
+                );
                 const currentTarget = mergeTargets[brand.id] ?? "";
                 const totalFilaments = usage[brand.id] ?? 0;
 
                 return (
-                  <div key={brand.id} className="border border-vultrix-gray/60 rounded-xl p-4 bg-vultrix-dark/60 space-y-4">
+                  <div
+                    key={brand.id}
+                    className="border border-vultrix-gray/60 rounded-xl p-4 bg-vultrix-dark/60 space-y-4"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-white font-semibold">{brand.name}</p>
@@ -221,12 +258,15 @@ export default function FilamentBrandManager() {
                         </p>
                       </div>
                       <span className="text-sm px-3 py-1 rounded-full bg-vultrix-gray/30 text-vultrix-light/80">
-                        {totalFilaments} {totalFilaments === 1 ? "filamento" : "filamentos"}
+                        {totalFilaments}{" "}
+                        {totalFilaments === 1 ? "filamento" : "filamentos"}
                       </span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs text-vultrix-light/60 uppercase">Destino</label>
+                        <label className="text-xs text-vultrix-light/60 uppercase">
+                          Destino
+                        </label>
                         <select
                           value={currentTarget}
                           onChange={(event) =>
@@ -247,9 +287,13 @@ export default function FilamentBrandManager() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-vultrix-light/60 uppercase">Preview</label>
+                        <label className="text-xs text-vultrix-light/60 uppercase">
+                          Preview
+                        </label>
                         <div className="mt-1 px-3 py-2 rounded-lg border border-dashed border-vultrix-gray/50 text-sm text-vultrix-light/80 min-h-[42px] flex items-center">
-                          {currentTarget ? `→ ${brands.find((brandOption) => brandOption.id === currentTarget)?.name}` : "Selecione um destino"}
+                          {currentTarget
+                            ? `→ ${brands.find((brandOption) => brandOption.id === currentTarget)?.name}`
+                            : "Selecione um destino"}
                         </div>
                       </div>
                     </div>
@@ -259,7 +303,9 @@ export default function FilamentBrandManager() {
                       className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-vultrix-accent/90 text-white disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <GitMerge size={16} />
-                      {savingOrigin === brand.id ? "Mesclando..." : "Mesclar marca"}
+                      {savingOrigin === brand.id
+                        ? "Mesclando..."
+                        : "Mesclar marca"}
                     </button>
                   </div>
                 );

@@ -3,7 +3,12 @@
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
 import { Database } from "@/types/database";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -25,7 +30,9 @@ import {
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 
 type FilamentRow = Database["public"]["Tables"]["filaments"]["Row"] & {
-  filament_brands?: Database["public"]["Tables"]["filament_brands"]["Row"] | null;
+  filament_brands?:
+    | Database["public"]["Tables"]["filament_brands"]["Row"]
+    | null;
 };
 
 type BrandRow = Database["public"]["Tables"]["filament_brands"]["Row"];
@@ -134,9 +141,12 @@ type RestockCostPreview = {
   feeShare: number;
 };
 
-const generateId = () => `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+const generateId = () =>
+  `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-const createIndividualItem = (partial?: Partial<IndividualItem>): IndividualItem => ({
+const createIndividualItem = (
+  partial?: Partial<IndividualItem>,
+): IndividualItem => ({
   id: generateId(),
   nome: "",
   brand_id: "",
@@ -165,7 +175,9 @@ const createBatchItem = (partial?: Partial<BatchItem>): BatchItem => ({
   ...partial,
 });
 
-const createSharedPurchase = (partial?: Partial<SharedPurchase>): SharedPurchase => ({
+const createSharedPurchase = (
+  partial?: Partial<SharedPurchase>,
+): SharedPurchase => ({
   brand_id: "",
   tipo: "PLA",
   data_compra: new Date().toISOString().split("T")[0],
@@ -175,7 +187,9 @@ const createSharedPurchase = (partial?: Partial<SharedPurchase>): SharedPurchase
   ...partial,
 });
 
-const createPurchaseCostInputs = (partial?: Partial<PurchaseCostInputs>): PurchaseCostInputs => ({
+const createPurchaseCostInputs = (
+  partial?: Partial<PurchaseCostInputs>,
+): PurchaseCostInputs => ({
   shippingTotal: "",
   feesTotal: "",
   prorateByWeight: false,
@@ -207,15 +221,28 @@ export default function FilamentosPage() {
   const [brandModalOpen, setBrandModalOpen] = useState(false);
   const [newBrand, setNewBrand] = useState({ name: "", website: "" });
   const [formMode, setFormMode] = useState<FormMode>("single");
-  const [individualItems, setIndividualItems] = useState<IndividualItem[]>([createIndividualItem()]);
-  const [batchItems, setBatchItems] = useState<BatchItem[]>([createBatchItem()]);
-  const [sharedPurchase, setSharedPurchase] = useState<SharedPurchase>(createSharedPurchase());
-  const [individualCosts, setIndividualCosts] = useState<PurchaseCostInputs>(createPurchaseCostInputs());
-  const [batchCosts, setBatchCosts] = useState<PurchaseCostInputs>(createPurchaseCostInputs());
+  const [individualItems, setIndividualItems] = useState<IndividualItem[]>([
+    createIndividualItem(),
+  ]);
+  const [batchItems, setBatchItems] = useState<BatchItem[]>([
+    createBatchItem(),
+  ]);
+  const [sharedPurchase, setSharedPurchase] = useState<SharedPurchase>(
+    createSharedPurchase(),
+  );
+  const [individualCosts, setIndividualCosts] = useState<PurchaseCostInputs>(
+    createPurchaseCostInputs(),
+  );
+  const [batchCosts, setBatchCosts] = useState<PurchaseCostInputs>(
+    createPurchaseCostInputs(),
+  );
   const [batchPaste, setBatchPaste] = useState("");
   const [restockTarget, setRestockTarget] = useState<FilamentRow | null>(null);
-  const [restockForm, setRestockForm] = useState<RestockForm>(createRestockForm());
-  const [restockCosts, setRestockCosts] = useState<PurchaseCostInputs>(createPurchaseCostInputs());
+  const [restockForm, setRestockForm] =
+    useState<RestockForm>(createRestockForm());
+  const [restockCosts, setRestockCosts] = useState<PurchaseCostInputs>(
+    createPurchaseCostInputs(),
+  );
 
   useEffect(() => {
     if (user) {
@@ -280,8 +307,10 @@ export default function FilamentosPage() {
     };
     const shippingTotal = Math.max(0, toNumber(costs.shippingTotal));
     const feesTotal = Math.max(0, toNumber(costs.feesTotal));
-    const shouldDistribute = costs.prorateByWeight && (shippingTotal > 0 || feesTotal > 0);
-    const totalWeight = items.reduce((sum, item) => sum + item.peso_atual, 0) / 1000;
+    const shouldDistribute =
+      costs.prorateByWeight && (shippingTotal > 0 || feesTotal > 0);
+    const totalWeight =
+      items.reduce((sum, item) => sum + item.peso_atual, 0) / 1000;
     const perItem: Record<string, CostBreakdownPerItem> = {};
 
     items.forEach((item) => {
@@ -327,26 +356,46 @@ export default function FilamentosPage() {
 
   const modalSummary = useMemo(() => {
     const items = formMode === "single" ? individualItems : batchItems;
-    const breakdown = formMode === "single" ? individualCostBreakdown : batchCostBreakdown;
+    const breakdown =
+      formMode === "single" ? individualCostBreakdown : batchCostBreakdown;
     const totalItems = items.length;
-    const totalWeightKg = items.reduce((sum, item) => sum + item.peso_atual, 0) / 1000;
-    const avgCostKg = totalWeightKg > 0
-      ? items.reduce((sum, item) => sum + (item.peso_atual / 1000) * item.custo_por_kg, 0) / totalWeightKg
-      : 0;
-    const avgCostKgWithShipping = totalWeightKg > 0
-      ? items.reduce((sum, item) => {
-          const computed = breakdown.perItem[item.id];
-          return sum + (item.peso_atual / 1000) * (computed?.costPerKgWithShipping ?? item.custo_por_kg);
-        }, 0) / totalWeightKg
-      : 0;
+    const totalWeightKg =
+      items.reduce((sum, item) => sum + item.peso_atual, 0) / 1000;
+    const avgCostKg =
+      totalWeightKg > 0
+        ? items.reduce(
+            (sum, item) => sum + (item.peso_atual / 1000) * item.custo_por_kg,
+            0,
+          ) / totalWeightKg
+        : 0;
+    const avgCostKgWithShipping =
+      totalWeightKg > 0
+        ? items.reduce((sum, item) => {
+            const computed = breakdown.perItem[item.id];
+            return (
+              sum +
+              (item.peso_atual / 1000) *
+                (computed?.costPerKgWithShipping ?? item.custo_por_kg)
+            );
+          }, 0) / totalWeightKg
+        : 0;
 
     return { totalItems, totalWeightKg, avgCostKg, avgCostKgWithShipping };
-  }, [formMode, individualItems, batchItems, individualCostBreakdown, batchCostBreakdown]);
+  }, [
+    formMode,
+    individualItems,
+    batchItems,
+    individualCostBreakdown,
+    batchCostBreakdown,
+  ]);
 
   const stats = useMemo(() => {
     const total = filaments.length;
     const estoque = filaments.reduce((sum, f) => sum + f.peso_atual, 0) / 1000;
-    const valor = filaments.reduce((sum, f) => sum + (f.peso_atual / 1000) * f.custo_por_kg, 0);
+    const valor = filaments.reduce(
+      (sum, f) => sum + (f.peso_atual / 1000) * f.custo_por_kg,
+      0,
+    );
     const lowStock = filaments.filter((f) => f.peso_atual < 200).length;
     return { total, estoque, valor, lowStock };
   }, [filaments]);
@@ -384,7 +433,9 @@ export default function FilamentosPage() {
         </div>
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm text-vultrix-light/70">Frete total (R$)</label>
+            <label className="text-sm text-vultrix-light/70">
+              Frete total (R$)
+            </label>
             <input
               type="number"
               min={0}
@@ -399,7 +450,9 @@ export default function FilamentosPage() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm text-vultrix-light/70">Taxas / Impostos (R$)</label>
+            <label className="text-sm text-vultrix-light/70">
+              Taxas / Impostos (R$)
+            </label>
             <input
               type="number"
               min={0}
@@ -421,16 +474,29 @@ export default function FilamentosPage() {
               onChange={(e) => update({ prorateByWeight: e.target.checked })}
               className="w-4 h-4"
             />
-            <label htmlFor={`prorate-${Math.random()}`} className="text-sm text-vultrix-light/70 cursor-pointer">
+            <label
+              htmlFor={`prorate-${Math.random()}`}
+              className="text-sm text-vultrix-light/70 cursor-pointer"
+            >
               Ratear por peso
             </label>
           </div>
           {costs.prorateByWeight && weightKg > 0 && (
             <div className="bg-vultrix-dark/60 border border-vultrix-gray/60 rounded-lg p-3 space-y-1">
-              <p className="text-xs text-vultrix-light/60">Peso total: {weightKg.toFixed(2)} kg</p>
               <p className="text-xs text-vultrix-light/60">
-                Custo extra/kg: R$ {(((typeof costs.shippingTotal === "number" ? costs.shippingTotal : 0) +
-                  (typeof costs.feesTotal === "number" ? costs.feesTotal : 0)) / weightKg).toFixed(2)}
+                Peso total: {weightKg.toFixed(2)} kg
+              </p>
+              <p className="text-xs text-vultrix-light/60">
+                Custo extra/kg: R${" "}
+                {(
+                  ((typeof costs.shippingTotal === "number"
+                    ? costs.shippingTotal
+                    : 0) +
+                    (typeof costs.feesTotal === "number"
+                      ? costs.feesTotal
+                      : 0)) /
+                  weightKg
+                ).toFixed(2)}
               </p>
             </div>
           )}
@@ -441,7 +507,8 @@ export default function FilamentosPage() {
 
   const renderIndividualForm = () => {
     const totalWeightKg =
-      individualItems.reduce((sum, current) => sum + current.peso_atual, 0) / 1000;
+      individualItems.reduce((sum, current) => sum + current.peso_atual, 0) /
+      1000;
 
     return (
       <div className="space-y-6 lg:space-y-8">
@@ -458,7 +525,10 @@ export default function FilamentosPage() {
 
         <div className="space-y-6">
           {individualItems.map((item, idx) => (
-            <div key={item.id} className="border border-vultrix-gray/60 rounded-xl p-4 bg-vultrix-black space-y-4">
+            <div
+              key={item.id}
+              className="border border-vultrix-gray/60 rounded-xl p-4 bg-vultrix-black space-y-4"
+            >
               <div className="flex items-center justify-between">
                 <p className="text-sm text-vultrix-light/60">
                   Filamento #{idx + 1} – {item.nome || "Sem nome"}
@@ -484,21 +554,33 @@ export default function FilamentosPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6">
                 <div className="space-y-2">
-                  <label className="text-sm text-vultrix-light/70">Nome *</label>
+                  <label className="text-sm text-vultrix-light/70">
+                    Nome *
+                  </label>
                   <input
                     type="text"
                     value={item.nome}
-                    onChange={(e) => updateIndividualItem(item.id, "nome", e.target.value)}
+                    onChange={(e) =>
+                      updateIndividualItem(item.id, "nome", e.target.value)
+                    }
                     placeholder="Nome do filamento (ex: PLA Branco 1.75mm)"
                     className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm text-vultrix-light/70">Marca *</label>
+                  <label className="text-sm text-vultrix-light/70">
+                    Marca *
+                  </label>
                   <div className="flex gap-2">
                     <select
                       value={item.brand_id}
-                      onChange={(e) => updateIndividualItem(item.id, "brand_id", e.target.value)}
+                      onChange={(e) =>
+                        updateIndividualItem(
+                          item.id,
+                          "brand_id",
+                          e.target.value,
+                        )
+                      }
                       className="flex-1 px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                     >
                       <option value="">Selecione</option>
@@ -524,7 +606,9 @@ export default function FilamentosPage() {
                   <label className="text-sm text-vultrix-light/70">Tipo</label>
                   <select
                     value={item.tipo}
-                    onChange={(e) => updateIndividualItem(item.id, "tipo", e.target.value)}
+                    onChange={(e) =>
+                      updateIndividualItem(item.id, "tipo", e.target.value)
+                    }
                     className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                   >
                     {TIPOS_FILAMENTO.map((tipo) => (
@@ -535,28 +619,48 @@ export default function FilamentosPage() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm text-vultrix-light/70">Peso (g)</label>
+                  <label className="text-sm text-vultrix-light/70">
+                    Peso (g)
+                  </label>
                   <input
                     type="number"
                     min={0}
                     step={10}
                     value={item.peso_atual}
-                    onChange={(e) => updateIndividualItem(item.id, "peso_atual", Number(e.target.value))}
+                    onChange={(e) =>
+                      updateIndividualItem(
+                        item.id,
+                        "peso_atual",
+                        Number(e.target.value),
+                      )
+                    }
                     className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm text-vultrix-light/70">Custo Kg (R$)</label>
+                  <label className="text-sm text-vultrix-light/70">
+                    Custo Kg (R$)
+                  </label>
                   <input
                     type="number"
                     min={0}
                     step={0.01}
                     value={item.custo_por_kg}
-                    onChange={(e) => updateIndividualItem(item.id, "custo_por_kg", Number(e.target.value))}
+                    onChange={(e) =>
+                      updateIndividualItem(
+                        item.id,
+                        "custo_por_kg",
+                        Number(e.target.value),
+                      )
+                    }
                     className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                   />
                   <p className="text-xs text-vultrix-light/60">
-                    C/ frete: R$ {(individualCostBreakdown.perItem[item.id]?.costPerKgWithShipping ?? item.custo_por_kg).toFixed(2)}
+                    C/ frete: R${" "}
+                    {(
+                      individualCostBreakdown.perItem[item.id]
+                        ?.costPerKgWithShipping ?? item.custo_por_kg
+                    ).toFixed(2)}
                   </p>
                 </div>
               </div>
@@ -568,13 +672,25 @@ export default function FilamentosPage() {
                     <input
                       type="color"
                       value={item.color_hex}
-                      onChange={(e) => updateIndividualItem(item.id, "color_hex", e.target.value)}
+                      onChange={(e) =>
+                        updateIndividualItem(
+                          item.id,
+                          "color_hex",
+                          e.target.value,
+                        )
+                      }
                       className="w-16 h-12 rounded"
                     />
                     <input
                       type="text"
                       value={item.color_name}
-                      onChange={(e) => updateIndividualItem(item.id, "color_name", e.target.value)}
+                      onChange={(e) =>
+                        updateIndividualItem(
+                          item.id,
+                          "color_name",
+                          e.target.value,
+                        )
+                      }
                       placeholder="Nome da cor (ex: Azul Royal)"
                       className="flex-1 px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                     />
@@ -596,11 +712,19 @@ export default function FilamentosPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm text-vultrix-light/70">Data da compra</label>
+                  <label className="text-sm text-vultrix-light/70">
+                    Data da compra
+                  </label>
                   <input
                     type="date"
                     value={item.data_compra}
-                    onChange={(e) => updateIndividualItem(item.id, "data_compra", e.target.value)}
+                    onChange={(e) =>
+                      updateIndividualItem(
+                        item.id,
+                        "data_compra",
+                        e.target.value,
+                      )
+                    }
                     className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                   />
                 </div>
@@ -608,21 +732,37 @@ export default function FilamentosPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm text-vultrix-light/70">Origem / Loja</label>
+                  <label className="text-sm text-vultrix-light/70">
+                    Origem / Loja
+                  </label>
                   <input
                     type="text"
                     value={item.purchase_source}
-                    onChange={(e) => updateIndividualItem(item.id, "purchase_source", e.target.value)}
+                    onChange={(e) =>
+                      updateIndividualItem(
+                        item.id,
+                        "purchase_source",
+                        e.target.value,
+                      )
+                    }
                     placeholder="STLFlix, Shopee, fornecedor..."
                     className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm text-vultrix-light/70">Link da compra</label>
+                  <label className="text-sm text-vultrix-light/70">
+                    Link da compra
+                  </label>
                   <input
                     type="url"
                     value={item.purchase_url}
-                    onChange={(e) => updateIndividualItem(item.id, "purchase_url", e.target.value)}
+                    onChange={(e) =>
+                      updateIndividualItem(
+                        item.id,
+                        "purchase_url",
+                        e.target.value,
+                      )
+                    }
                     placeholder="URL para recompra rápida"
                     className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                   />
@@ -633,7 +773,9 @@ export default function FilamentosPage() {
                 <label className="text-sm text-vultrix-light/70">Notas</label>
                 <textarea
                   value={item.notes}
-                  onChange={(e) => updateIndividualItem(item.id, "notes", e.target.value)}
+                  onChange={(e) =>
+                    updateIndividualItem(item.id, "notes", e.target.value)
+                  }
                   rows={2}
                   className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white resize-none"
                   placeholder="Observações sobre qualidade, lote, temperatura ideal..."
@@ -641,7 +783,9 @@ export default function FilamentosPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm text-vultrix-light/70">Imagem do rolo</label>
+                <label className="text-sm text-vultrix-light/70">
+                  Imagem do rolo
+                </label>
                 <input
                   type="file"
                   accept="image/*"
@@ -650,7 +794,11 @@ export default function FilamentosPage() {
                   disabled={uploadingImage}
                 />
                 {item.image_url && (
-                  <img src={item.image_url} alt="Preview" className="w-32 h-32 object-cover rounded-lg border border-vultrix-gray" />
+                  <img
+                    src={item.image_url}
+                    alt="Preview"
+                    className="w-32 h-32 object-cover rounded-lg border border-vultrix-gray"
+                  />
                 )}
               </div>
             </div>
@@ -669,7 +817,8 @@ export default function FilamentosPage() {
   };
 
   const renderBatchForm = () => {
-    const totalWeightKg = batchItems.reduce((sum, current) => sum + current.peso_atual, 0) / 1000;
+    const totalWeightKg =
+      batchItems.reduce((sum, current) => sum + current.peso_atual, 0) / 1000;
 
     return (
       <div className="space-y-6 lg:space-y-8">
@@ -679,8 +828,12 @@ export default function FilamentosPage() {
               <Building2 size={14} /> Cabeçalho da compra
             </div>
             <div className="flex flex-col gap-2">
-              <p className="text-sm text-vultrix-light/60">Organize marca, tipo e contexto da compra em lote</p>
-              <p className="text-white font-semibold">Detalhe as informações gerais da compra</p>
+              <p className="text-sm text-vultrix-light/60">
+                Organize marca, tipo e contexto da compra em lote
+              </p>
+              <p className="text-white font-semibold">
+                Detalhe as informações gerais da compra
+              </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6">
               <div className="space-y-2">
@@ -688,7 +841,12 @@ export default function FilamentosPage() {
                 <div className="flex gap-2">
                   <select
                     value={sharedPurchase.brand_id}
-                    onChange={(e) => setSharedPurchase((prev) => ({ ...prev, brand_id: e.target.value }))}
+                    onChange={(e) =>
+                      setSharedPurchase((prev) => ({
+                        ...prev,
+                        brand_id: e.target.value,
+                      }))
+                    }
                     className="flex-1 px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                   >
                     <option value="">Selecione</option>
@@ -711,7 +869,12 @@ export default function FilamentosPage() {
                 <label className="text-sm text-vultrix-light/70">Tipo</label>
                 <select
                   value={sharedPurchase.tipo}
-                  onChange={(e) => setSharedPurchase((prev) => ({ ...prev, tipo: e.target.value }))}
+                  onChange={(e) =>
+                    setSharedPurchase((prev) => ({
+                      ...prev,
+                      tipo: e.target.value,
+                    }))
+                  }
                   className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                 >
                   {TIPOS_FILAMENTO.map((tipo) => (
@@ -722,36 +885,62 @@ export default function FilamentosPage() {
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm text-vultrix-light/70">Data da compra</label>
+                <label className="text-sm text-vultrix-light/70">
+                  Data da compra
+                </label>
                 <input
                   type="date"
                   value={sharedPurchase.data_compra}
-                  onChange={(e) => setSharedPurchase((prev) => ({ ...prev, data_compra: e.target.value }))}
+                  onChange={(e) =>
+                    setSharedPurchase((prev) => ({
+                      ...prev,
+                      data_compra: e.target.value,
+                    }))
+                  }
                   className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm text-vultrix-light/70">Origem / Link</label>
+                <label className="text-sm text-vultrix-light/70">
+                  Origem / Link
+                </label>
                 <input
                   type="text"
                   value={sharedPurchase.purchase_source}
-                  onChange={(e) => setSharedPurchase((prev) => ({ ...prev, purchase_source: e.target.value }))}
+                  onChange={(e) =>
+                    setSharedPurchase((prev) => ({
+                      ...prev,
+                      purchase_source: e.target.value,
+                    }))
+                  }
                   placeholder="Origem / Loja (STLFlix, Shopee, fornecedor...)"
                   className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                 />
                 <input
                   type="url"
                   value={sharedPurchase.purchase_url}
-                  onChange={(e) => setSharedPurchase((prev) => ({ ...prev, purchase_url: e.target.value }))}
+                  onChange={(e) =>
+                    setSharedPurchase((prev) => ({
+                      ...prev,
+                      purchase_url: e.target.value,
+                    }))
+                  }
                   placeholder="Link da compra para recompra rápida"
                   className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                 />
               </div>
               <div className="md:col-span-2 space-y-2">
-                <label className="text-sm text-vultrix-light/70">Notas gerais</label>
+                <label className="text-sm text-vultrix-light/70">
+                  Notas gerais
+                </label>
                 <textarea
                   value={sharedPurchase.notes}
-                  onChange={(e) => setSharedPurchase((prev) => ({ ...prev, notes: e.target.value }))}
+                  onChange={(e) =>
+                    setSharedPurchase((prev) => ({
+                      ...prev,
+                      notes: e.target.value,
+                    }))
+                  }
                   rows={3}
                   className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white resize-none"
                   placeholder="Notas gerais do pedido, cupom aplicado, referência de frete..."
@@ -778,7 +967,9 @@ export default function FilamentosPage() {
               <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-vultrix-black/60 border border-vultrix-gray/60 text-xs uppercase tracking-[0.08em] text-vultrix-light/70">
                 <Package size={14} /> Lista de itens ({batchItems.length})
               </div>
-              <p className="text-sm text-vultrix-light/60 mt-2">Nome, cor, peso e custo de cada filamento</p>
+              <p className="text-sm text-vultrix-light/60 mt-2">
+                Nome, cor, peso e custo de cada filamento
+              </p>
             </div>
             <div className="flex gap-2">
               <button
@@ -808,9 +999,14 @@ export default function FilamentosPage() {
 
           <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-2">
             {batchItems.map((item, idx) => (
-              <div key={item.id} className="border border-vultrix-gray/60 rounded-lg p-4 space-y-4">
+              <div
+                key={item.id}
+                className="border border-vultrix-gray/60 rounded-lg p-4 space-y-4"
+              >
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-vultrix-light/60">Item #{idx + 1} – {item.nome || "Sem nome"}</p>
+                  <p className="text-sm text-vultrix-light/60">
+                    Item #{idx + 1} – {item.nome || "Sem nome"}
+                  </p>
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -832,38 +1028,62 @@ export default function FilamentosPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
                   <div className="space-y-2">
-                    <label className="text-sm text-vultrix-light/70">Nome *</label>
+                    <label className="text-sm text-vultrix-light/70">
+                      Nome *
+                    </label>
                     <input
                       type="text"
                       value={item.nome}
-                      onChange={(e) => updateBatchItem(item.id, "nome", e.target.value)}
+                      onChange={(e) =>
+                        updateBatchItem(item.id, "nome", e.target.value)
+                      }
                       placeholder="Ex: PLA Azul Aurora"
                       className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm text-vultrix-light/70">Peso (g)</label>
+                    <label className="text-sm text-vultrix-light/70">
+                      Peso (g)
+                    </label>
                     <input
                       type="number"
                       min={0}
                       step={10}
                       value={item.peso_atual}
-                      onChange={(e) => updateBatchItem(item.id, "peso_atual", Number(e.target.value))}
+                      onChange={(e) =>
+                        updateBatchItem(
+                          item.id,
+                          "peso_atual",
+                          Number(e.target.value),
+                        )
+                      }
                       className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm text-vultrix-light/70">Custo Kg (R$)</label>
+                    <label className="text-sm text-vultrix-light/70">
+                      Custo Kg (R$)
+                    </label>
                     <input
                       type="number"
                       min={0}
                       step={0.01}
                       value={item.custo_por_kg}
-                      onChange={(e) => updateBatchItem(item.id, "custo_por_kg", Number(e.target.value))}
+                      onChange={(e) =>
+                        updateBatchItem(
+                          item.id,
+                          "custo_por_kg",
+                          Number(e.target.value),
+                        )
+                      }
                       className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                     />
                     <p className="text-xs text-vultrix-light/60">
-                      C/ frete: R$ {(batchCostBreakdown.perItem[item.id]?.costPerKgWithShipping ?? item.custo_por_kg).toFixed(2)}
+                      C/ frete: R${" "}
+                      {(
+                        batchCostBreakdown.perItem[item.id]
+                          ?.costPerKgWithShipping ?? item.custo_por_kg
+                      ).toFixed(2)}
                     </p>
                   </div>
                 </div>
@@ -875,23 +1095,31 @@ export default function FilamentosPage() {
                       <input
                         type="color"
                         value={item.color_hex}
-                        onChange={(e) => updateBatchItem(item.id, "color_hex", e.target.value)}
+                        onChange={(e) =>
+                          updateBatchItem(item.id, "color_hex", e.target.value)
+                        }
                         className="w-16 h-12 rounded"
                       />
                       <input
                         type="text"
                         value={item.color_name}
-                        onChange={(e) => updateBatchItem(item.id, "color_name", e.target.value)}
+                        onChange={(e) =>
+                          updateBatchItem(item.id, "color_name", e.target.value)
+                        }
                         placeholder="Nome da cor (ex: Azul Royal)"
                         className="flex-1 px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                       />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm text-vultrix-light/70">Notas do item</label>
+                    <label className="text-sm text-vultrix-light/70">
+                      Notas do item
+                    </label>
                     <textarea
                       value={item.notes}
-                      onChange={(e) => updateBatchItem(item.id, "notes", e.target.value)}
+                      onChange={(e) =>
+                        updateBatchItem(item.id, "notes", e.target.value)
+                      }
                       rows={2}
                       className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white resize-none"
                       placeholder="Observações rápidas sobre o rolo"
@@ -921,7 +1149,8 @@ export default function FilamentosPage() {
             <div>
               <p className="text-white font-semibold">{restockTarget.nome}</p>
               <p className="text-sm text-vultrix-light/60">
-                {restockTarget.marca} • {restockTarget.tipo} • {restockTarget.peso_atual} g
+                {restockTarget.marca} • {restockTarget.tipo} •{" "}
+                {restockTarget.peso_atual} g
               </p>
             </div>
           </div>
@@ -930,28 +1159,44 @@ export default function FilamentosPage() {
         <div className="border border-vultrix-gray/60 rounded-xl p-4 bg-vultrix-black space-y-4">
           <div className="flex flex-col gap-2">
             <p className="text-sm text-vultrix-light/60">Dados da reposição</p>
-            <p className="text-white font-semibold">Informe peso e custo da nova compra</p>
+            <p className="text-white font-semibold">
+              Informe peso e custo da nova compra
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm text-vultrix-light/70">Peso comprado (g) *</label>
+              <label className="text-sm text-vultrix-light/70">
+                Peso comprado (g) *
+              </label>
               <input
                 type="number"
                 min={0}
                 step={10}
                 value={restockForm.weight}
-                onChange={(e) => setRestockForm((prev) => ({ ...prev, weight: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setRestockForm((prev) => ({
+                    ...prev,
+                    weight: Number(e.target.value),
+                  }))
+                }
                 className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                 placeholder="Ex: 1000"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm text-vultrix-light/70">Data da compra</label>
+              <label className="text-sm text-vultrix-light/70">
+                Data da compra
+              </label>
               <input
                 type="date"
                 value={restockForm.purchaseDate}
-                onChange={(e) => setRestockForm((prev) => ({ ...prev, purchaseDate: e.target.value }))}
+                onChange={(e) =>
+                  setRestockForm((prev) => ({
+                    ...prev,
+                    purchaseDate: e.target.value,
+                  }))
+                }
                 className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
               />
             </div>
@@ -959,7 +1204,9 @@ export default function FilamentosPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm text-vultrix-light/70">Custo por Kg (R$)</label>
+              <label className="text-sm text-vultrix-light/70">
+                Custo por Kg (R$)
+              </label>
               <input
                 type="number"
                 min={0}
@@ -967,14 +1214,20 @@ export default function FilamentosPage() {
                 value={restockForm.costPerKg}
                 onChange={(e) => {
                   const value = Number(e.target.value);
-                  setRestockForm((prev) => ({ ...prev, costPerKg: value, costTotal: 0 }));
+                  setRestockForm((prev) => ({
+                    ...prev,
+                    costPerKg: value,
+                    costTotal: 0,
+                  }));
                 }}
                 className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                 placeholder="Ex: 85.00"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm text-vultrix-light/70">OU Custo total (R$)</label>
+              <label className="text-sm text-vultrix-light/70">
+                OU Custo total (R$)
+              </label>
               <input
                 type="number"
                 min={0}
@@ -982,7 +1235,11 @@ export default function FilamentosPage() {
                 value={restockForm.costTotal}
                 onChange={(e) => {
                   const value = Number(e.target.value);
-                  setRestockForm((prev) => ({ ...prev, costTotal: value, costPerKg: 0 }));
+                  setRestockForm((prev) => ({
+                    ...prev,
+                    costTotal: value,
+                    costPerKg: 0,
+                  }));
                 }}
                 className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
                 placeholder="Ex: 85.00"
@@ -992,21 +1249,35 @@ export default function FilamentosPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm text-vultrix-light/70">Origem / Loja</label>
+              <label className="text-sm text-vultrix-light/70">
+                Origem / Loja
+              </label>
               <input
                 type="text"
                 value={restockForm.purchaseSource}
-                onChange={(e) => setRestockForm((prev) => ({ ...prev, purchaseSource: e.target.value }))}
+                onChange={(e) =>
+                  setRestockForm((prev) => ({
+                    ...prev,
+                    purchaseSource: e.target.value,
+                  }))
+                }
                 placeholder="STLFlix, Shopee, fornecedor..."
                 className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm text-vultrix-light/70">Link da compra</label>
+              <label className="text-sm text-vultrix-light/70">
+                Link da compra
+              </label>
               <input
                 type="url"
                 value={restockForm.purchaseUrl}
-                onChange={(e) => setRestockForm((prev) => ({ ...prev, purchaseUrl: e.target.value }))}
+                onChange={(e) =>
+                  setRestockForm((prev) => ({
+                    ...prev,
+                    purchaseUrl: e.target.value,
+                  }))
+                }
                 placeholder="URL para recompra rápida"
                 className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white"
               />
@@ -1014,10 +1285,14 @@ export default function FilamentosPage() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm text-vultrix-light/70">Notas da reposição</label>
+            <label className="text-sm text-vultrix-light/70">
+              Notas da reposição
+            </label>
             <textarea
               value={restockForm.notes}
-              onChange={(e) => setRestockForm((prev) => ({ ...prev, notes: e.target.value }))}
+              onChange={(e) =>
+                setRestockForm((prev) => ({ ...prev, notes: e.target.value }))
+              }
               rows={3}
               className="w-full px-4 py-2 bg-vultrix-dark border border-vultrix-gray rounded-lg text-white resize-none"
               placeholder="Observações sobre esta compra específica..."
@@ -1036,7 +1311,6 @@ export default function FilamentosPage() {
       </div>
     );
   };
-
 
   const restockCostPreview: RestockCostPreview = useMemo(() => {
     if (!restockTarget) {
@@ -1057,16 +1331,19 @@ export default function FilamentosPage() {
     };
     const shippingTotal = Math.max(0, toNumber(restockCosts.shippingTotal));
     const feesTotal = Math.max(0, toNumber(restockCosts.feesTotal));
-    const includeExtras = restockCosts.prorateByWeight && (shippingTotal > 0 || feesTotal > 0);
+    const includeExtras =
+      restockCosts.prorateByWeight && (shippingTotal > 0 || feesTotal > 0);
     const baseCostPerKg =
       restockForm.costPerKg > 0
         ? restockForm.costPerKg
         : weightKg > 0 && restockForm.costTotal > 0
-        ? restockForm.costTotal / weightKg
-        : 0;
+          ? restockForm.costTotal / weightKg
+          : 0;
     const totalExtras = includeExtras ? shippingTotal + feesTotal : 0;
     const costPerKgWithShipping =
-      weightKg > 0 ? (baseCostPerKg * weightKg + totalExtras) / weightKg : baseCostPerKg;
+      weightKg > 0
+        ? (baseCostPerKg * weightKg + totalExtras) / weightKg
+        : baseCostPerKg;
 
     return {
       weightKg,
@@ -1082,20 +1359,20 @@ export default function FilamentosPage() {
     const newTotalWeight = restockTarget.peso_atual + restockForm.weight;
     const newWeightKg = newTotalWeight / 1000;
     const previousWeightKg = restockTarget.peso_atual / 1000;
-    const currentCostWithShipping = restockTarget.cost_per_kg_with_shipping || restockTarget.custo_por_kg;
+    const currentCostWithShipping =
+      restockTarget.cost_per_kg_with_shipping || restockTarget.custo_por_kg;
     const weightedBase =
       newWeightKg > 0
-        ?
-            (previousWeightKg * restockTarget.custo_por_kg +
-              restockCostPreview.weightKg * restockCostPreview.baseCostPerKg) /
-            newWeightKg
+        ? (previousWeightKg * restockTarget.custo_por_kg +
+            restockCostPreview.weightKg * restockCostPreview.baseCostPerKg) /
+          newWeightKg
         : restockCostPreview.baseCostPerKg;
     const weightedWithShipping =
       newWeightKg > 0
-        ?
-            (previousWeightKg * currentCostWithShipping +
-              restockCostPreview.weightKg * restockCostPreview.costPerKgWithShipping) /
-            newWeightKg
+        ? (previousWeightKg * currentCostWithShipping +
+            restockCostPreview.weightKg *
+              restockCostPreview.costPerKgWithShipping) /
+          newWeightKg
         : restockCostPreview.costPerKgWithShipping;
 
     return {
@@ -1107,15 +1384,18 @@ export default function FilamentosPage() {
 
   const isRestockMode = Boolean(restockTarget);
   const modalHeading = isRestockMode
-    ? { label: "Reposição de estoque", title: restockTarget?.nome || "Reposição" }
+    ? {
+        label: "Reposição de estoque",
+        title: restockTarget?.nome || "Reposição",
+      }
     : editingId
-    ? { label: "Editar Filamento", title: "Atualizar registro" }
-    : { label: "Novo Filamento", title: "Adicionar ao estoque" };
+      ? { label: "Editar Filamento", title: "Atualizar registro" }
+      : { label: "Novo Filamento", title: "Adicionar ao estoque" };
   const submitLabel = isRestockMode
     ? "Registrar reposição"
     : editingId
-    ? "Salvar alterações"
-    : "Registrar";
+      ? "Salvar alterações"
+      : "Registrar";
 
   const handleOpenModal = (filament?: FilamentRow) => {
     setRestockTarget(null);
@@ -1136,11 +1416,16 @@ export default function FilamentosPage() {
     setEditingId(filament.id);
     setFormMode("single");
     const inferredProration =
-      filament.shipping_prorated_by_weight ?? filament.cost_per_kg_with_shipping !== filament.custo_por_kg;
+      filament.shipping_prorated_by_weight ??
+      filament.cost_per_kg_with_shipping !== filament.custo_por_kg;
     setIndividualCosts(
       createPurchaseCostInputs({
-        shippingTotal: filament.purchase_shipping_total ?? filament.shipping_share_value ?? "",
-        feesTotal: filament.purchase_fees_total ?? filament.fees_share_value ?? "",
+        shippingTotal:
+          filament.purchase_shipping_total ??
+          filament.shipping_share_value ??
+          "",
+        feesTotal:
+          filament.purchase_fees_total ?? filament.fees_share_value ?? "",
         prorateByWeight: inferredProration,
       }),
     );
@@ -1214,7 +1499,9 @@ export default function FilamentosPage() {
         .from("filament-images")
         .upload(fileName, file, { cacheControl: "3600", upsert: false });
       if (error) throw error;
-      const { data } = supabase.storage.from("filament-images").getPublicUrl(fileName);
+      const { data } = supabase.storage
+        .from("filament-images")
+        .getPublicUrl(fileName);
       return data.publicUrl;
     } catch (error) {
       console.error("Erro ao enviar imagem:", error);
@@ -1246,11 +1533,17 @@ export default function FilamentosPage() {
 
     if (mode === "single") {
       setIndividualItems((prev) =>
-        prev.map((item) => (item.id === itemId ? { ...item, image_url: url } : item)),
+        prev.map((item) =>
+          item.id === itemId ? { ...item, image_url: url } : item,
+        ),
       );
     } else {
       setBatchItems((prev) =>
-        prev.map((item) => (item.id === itemId ? { ...item, notes: `${item.notes}\nImagem: ${url}` } : item)),
+        prev.map((item) =>
+          item.id === itemId
+            ? { ...item, notes: `${item.notes}\nImagem: ${url}` }
+            : item,
+        ),
       );
     }
   };
@@ -1260,11 +1553,19 @@ export default function FilamentosPage() {
     field: K,
     value: IndividualItem[K],
   ) => {
-    setIndividualItems((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
+    setIndividualItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
+    );
   };
 
-  const updateBatchItem = <K extends keyof BatchItem>(id: string, field: K, value: BatchItem[K]) => {
-    setBatchItems((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
+  const updateBatchItem = <K extends keyof BatchItem>(
+    id: string,
+    field: K,
+    value: BatchItem[K],
+  ) => {
+    setBatchItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
+    );
   };
 
   const addIndividualItem = () =>
@@ -1281,26 +1582,37 @@ export default function FilamentosPage() {
         }),
       ];
     });
-  const addBatchItem = () => setBatchItems((prev) => [...prev, createBatchItem()]);
+  const addBatchItem = () =>
+    setBatchItems((prev) => [...prev, createBatchItem()]);
 
   const duplicateIndividualItem = (id: string) => {
     const source = individualItems.find((item) => item.id === id);
     if (!source) return;
-    setIndividualItems((prev) => [...prev, createIndividualItem({ ...source, id: generateId() })]);
+    setIndividualItems((prev) => [
+      ...prev,
+      createIndividualItem({ ...source, id: generateId() }),
+    ]);
   };
 
   const duplicateBatchItem = (id: string) => {
     const source = batchItems.find((item) => item.id === id);
     if (!source) return;
-    setBatchItems((prev) => [...prev, createBatchItem({ ...source, id: generateId() })]);
+    setBatchItems((prev) => [
+      ...prev,
+      createBatchItem({ ...source, id: generateId() }),
+    ]);
   };
 
   const removeIndividualItem = (id: string) => {
-    setIndividualItems((prev) => (prev.length === 1 ? prev : prev.filter((item) => item.id !== id)));
+    setIndividualItems((prev) =>
+      prev.length === 1 ? prev : prev.filter((item) => item.id !== id),
+    );
   };
 
   const removeBatchItem = (id: string) => {
-    setBatchItems((prev) => (prev.length === 1 ? prev : prev.filter((item) => item.id !== id)));
+    setBatchItems((prev) =>
+      prev.length === 1 ? prev : prev.filter((item) => item.id !== id),
+    );
   };
 
   const handleBatchPaste = () => {
@@ -1310,9 +1622,13 @@ export default function FilamentosPage() {
       .map((line) => line.trim())
       .filter(Boolean);
     const items = lines.map((line) => {
-      const [nome = "", hex = "#808080", peso = "1000", custo = "0", notas = ""] = line
-        .split(/;|\t|,/)
-        .map((chunk) => chunk.trim());
+      const [
+        nome = "",
+        hex = "#808080",
+        peso = "1000",
+        custo = "0",
+        notas = "",
+      ] = line.split(/;|\t|,/).map((chunk) => chunk.trim());
       return createBatchItem({
         nome,
         color_hex: hex || "#808080",
@@ -1329,10 +1645,14 @@ export default function FilamentosPage() {
     }
   };
 
-  const buildPayloadFromIndividual = (item: IndividualItem, breakdown: CostBreakdown) => {
+  const buildPayloadFromIndividual = (
+    item: IndividualItem,
+    breakdown: CostBreakdown,
+  ) => {
     const brand = brands.find((b) => b.id === item.brand_id);
     const computed = breakdown.perItem[item.id];
-    const shippingTotal = breakdown.shippingTotal > 0 ? breakdown.shippingTotal : null;
+    const shippingTotal =
+      breakdown.shippingTotal > 0 ? breakdown.shippingTotal : null;
     const feesTotal = breakdown.feesTotal > 0 ? breakdown.feesTotal : null;
     return {
       user_id: user!.id,
@@ -1342,7 +1662,8 @@ export default function FilamentosPage() {
       peso_atual: item.peso_atual,
       peso_inicial: item.peso_inicial || item.peso_atual,
       custo_por_kg: item.custo_por_kg,
-      cost_per_kg_with_shipping: computed?.costPerKgWithShipping ?? item.custo_por_kg,
+      cost_per_kg_with_shipping:
+        computed?.costPerKgWithShipping ?? item.custo_por_kg,
       data_compra: item.data_compra,
       color_name: item.color_name || null,
       color_hex: item.color_hex,
@@ -1364,7 +1685,8 @@ export default function FilamentosPage() {
     const brand = brands.find((b) => b.id === sharedPurchase.brand_id);
     const notes = [item.notes, sharedPurchase.notes].filter(Boolean).join("\n");
     const computed = breakdown.perItem[item.id];
-    const shippingTotal = breakdown.shippingTotal > 0 ? breakdown.shippingTotal : null;
+    const shippingTotal =
+      breakdown.shippingTotal > 0 ? breakdown.shippingTotal : null;
     const feesTotal = breakdown.feesTotal > 0 ? breakdown.feesTotal : null;
     return {
       user_id: user!.id,
@@ -1374,7 +1696,8 @@ export default function FilamentosPage() {
       peso_atual: item.peso_atual,
       peso_inicial: item.peso_atual,
       custo_por_kg: item.custo_por_kg,
-      cost_per_kg_with_shipping: computed?.costPerKgWithShipping ?? item.custo_por_kg,
+      cost_per_kg_with_shipping:
+        computed?.costPerKgWithShipping ?? item.custo_por_kg,
       data_compra: sharedPurchase.data_compra,
       color_name: item.color_name || null,
       color_hex: item.color_hex,
@@ -1426,15 +1749,17 @@ export default function FilamentosPage() {
     const totalWeightKg = totalWeight / 1000;
     const weightedBaseCost =
       totalWeightKg > 0
-        ? (previousWeightKg * restockTarget.custo_por_kg + weightKg * baseCostPerKg) / totalWeightKg
+        ? (previousWeightKg * restockTarget.custo_por_kg +
+            weightKg * baseCostPerKg) /
+          totalWeightKg
         : baseCostPerKg;
-    const previousCostWithShipping = restockTarget.cost_per_kg_with_shipping || restockTarget.custo_por_kg;
+    const previousCostWithShipping =
+      restockTarget.cost_per_kg_with_shipping || restockTarget.custo_por_kg;
     const weightedCostWithShipping =
       totalWeightKg > 0
-        ?
-            (previousWeightKg * previousCostWithShipping +
-              weightKg * restockCostPreview.costPerKgWithShipping) /
-            totalWeightKg
+        ? (previousWeightKg * previousCostWithShipping +
+            weightKg * restockCostPreview.costPerKgWithShipping) /
+          totalWeightKg
         : restockCostPreview.costPerKgWithShipping;
 
     const toNumber = (value: number | "" | undefined) => {
@@ -1444,7 +1769,8 @@ export default function FilamentosPage() {
     };
     const shippingTotal = Math.max(0, toNumber(restockCosts.shippingTotal));
     const feesTotal = Math.max(0, toNumber(restockCosts.feesTotal));
-    const distributeExtras = restockCosts.prorateByWeight && (shippingTotal > 0 || feesTotal > 0);
+    const distributeExtras =
+      restockCosts.prorateByWeight && (shippingTotal > 0 || feesTotal > 0);
     const noteEntry = restockForm.notes
       ? `Reposição ${restockForm.purchaseDate || new Date().toISOString().split("T")[0]}: ${restockForm.notes}`
       : "";
@@ -1454,17 +1780,22 @@ export default function FilamentosPage() {
       .from("filaments")
       .update({
         peso_atual: totalWeight,
-        peso_inicial: (restockTarget.peso_inicial || restockTarget.peso_atual) + pesoComprado,
+        peso_inicial:
+          (restockTarget.peso_inicial || restockTarget.peso_atual) +
+          pesoComprado,
         custo_por_kg: weightedBaseCost,
         cost_per_kg_with_shipping: weightedCostWithShipping,
         data_compra: restockForm.purchaseDate,
-        purchase_source: restockForm.purchaseSource || restockTarget.purchase_source,
+        purchase_source:
+          restockForm.purchaseSource || restockTarget.purchase_source,
         purchase_url: restockForm.purchaseUrl || restockTarget.purchase_url,
         notes: notes || null,
         purchase_shipping_total: shippingTotal || null,
         purchase_fees_total: feesTotal || null,
         shipping_prorated_by_weight: distributeExtras,
-        shipping_share_value: distributeExtras ? restockCostPreview.shippingShare : null,
+        shipping_share_value: distributeExtras
+          ? restockCostPreview.shippingShare
+          : null,
         fees_share_value: distributeExtras ? restockCostPreview.feeShare : null,
       })
       .eq("id", restockTarget.id);
@@ -1490,21 +1821,28 @@ export default function FilamentosPage() {
           alert("Preencha nome e marca do filamento");
           return;
         }
-        const payload = buildPayloadFromIndividual(individualItems[0], individualCostBreakdown);
+        const payload = buildPayloadFromIndividual(
+          individualItems[0],
+          individualCostBreakdown,
+        );
         await supabase.from("filaments").update(payload).eq("id", editingId);
       } else if (formMode === "single") {
         if (!validateIndividualItems()) {
           alert("Preencha nome e marca para todos os filamentos");
           return;
         }
-        const payloads = individualItems.map((item) => buildPayloadFromIndividual(item, individualCostBreakdown));
+        const payloads = individualItems.map((item) =>
+          buildPayloadFromIndividual(item, individualCostBreakdown),
+        );
         await supabase.from("filaments").insert(payloads);
       } else {
         if (!validateBatchItems()) {
           alert("Preencha marca, data e nomes dos itens do lote");
           return;
         }
-        const payloads = batchItems.map((item) => buildPayloadFromBatch(item, batchCostBreakdown));
+        const payloads = batchItems.map((item) =>
+          buildPayloadFromBatch(item, batchCostBreakdown),
+        );
         await supabase.from("filaments").insert(payloads);
       }
 
@@ -1515,7 +1853,6 @@ export default function FilamentosPage() {
       alert("Não foi possível salvar");
     }
   };
-
 
   if (authLoading || loading) {
     return (
@@ -1530,7 +1867,9 @@ export default function FilamentosPage() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white">Filamentos</h1>
-          <p className="text-vultrix-light/70">Gestão visual e inteligente de estoque</p>
+          <p className="text-vultrix-light/70">
+            Gestão visual e inteligente de estoque
+          </p>
         </div>
         <div className="flex gap-3">
           <button
@@ -1555,7 +1894,11 @@ export default function FilamentosPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4"
+        >
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center">
               <Package className="text-blue-400" size={24} />
@@ -1566,29 +1909,48 @@ export default function FilamentosPage() {
             </div>
           </div>
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4"
+        >
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center">
               <TrendingUp className="text-green-400" size={24} />
             </div>
             <div>
               <p className="text-sm text-vultrix-light/60">Estoque</p>
-              <p className="text-2xl text-white font-bold">{stats.estoque.toFixed(1)} kg</p>
+              <p className="text-2xl text-white font-bold">
+                {stats.estoque.toFixed(1)} kg
+              </p>
             </div>
           </div>
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4"
+        >
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center">
               <Building2 className="text-purple-400" size={24} />
             </div>
             <div>
               <p className="text-sm text-vultrix-light/60">Valor total</p>
-              <p className="text-2xl text-white font-bold">R$ {stats.valor.toFixed(0)}</p>
+              <p className="text-2xl text-white font-bold">
+                R$ {stats.valor.toFixed(0)}
+              </p>
             </div>
           </div>
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4"
+        >
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-orange-500/20 rounded-lg flex items-center justify-center">
               <AlertTriangle className="text-orange-400" size={24} />
@@ -1604,7 +1966,10 @@ export default function FilamentosPage() {
       <div className="flex flex-wrap gap-4">
         <div className="flex-1 min-w-[220px]">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-vultrix-light/50" size={18} />
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-vultrix-light/50"
+              size={18}
+            />
             <input
               type="text"
               placeholder="Buscar por nome ou marca..."
@@ -1645,7 +2010,8 @@ export default function FilamentosPage() {
           const brand = Array.isArray(filament.filament_brands)
             ? filament.filament_brands[0]
             : filament.filament_brands;
-          const stockPercent = (filament.peso_atual / filament.peso_inicial) * 100;
+          const stockPercent =
+            (filament.peso_atual / filament.peso_inicial) * 100;
           const lowStock = filament.peso_atual < 200;
           return (
             <motion.div
@@ -1659,7 +2025,11 @@ export default function FilamentosPage() {
             >
               <div className="relative h-40 bg-vultrix-black">
                 {filament.image_url ? (
-                  <img src={filament.image_url} alt={filament.nome} className="w-full h-full object-cover" />
+                  <img
+                    src={filament.image_url}
+                    alt={filament.nome}
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
                     <Package className="text-vultrix-light/30" size={48} />
@@ -1679,7 +2049,9 @@ export default function FilamentosPage() {
 
               <div className="p-4 space-y-3">
                 <div>
-                  <h3 className="text-lg font-bold text-white">{filament.nome}</h3>
+                  <h3 className="text-lg font-bold text-white">
+                    {filament.nome}
+                  </h3>
                   <div className="flex items-center gap-2 text-sm text-vultrix-light/70">
                     <Building2 size={14} />
                     <span>{brand?.name || filament.marca}</span>
@@ -1709,8 +2081,8 @@ export default function FilamentosPage() {
                         stockPercent > 50
                           ? "bg-green-500"
                           : stockPercent > 20
-                          ? "bg-yellow-500"
-                          : "bg-red-500"
+                            ? "bg-yellow-500"
+                            : "bg-red-500"
                       }`}
                       style={{ width: `${Math.min(stockPercent, 100)}%` }}
                     />
@@ -1718,12 +2090,25 @@ export default function FilamentosPage() {
                 </div>
                 <div className="flex items-center justify-between border-t border-vultrix-gray pt-3">
                   <div>
-                    <p className="text-xs text-vultrix-light/60">Custo/Kg (c/ frete)</p>
-                    <p className="text-lg font-bold text-white">R$ {(filament.cost_per_kg_with_shipping || filament.custo_por_kg).toFixed(2)}</p>
-                    <p className="text-xs text-vultrix-light/50">s/ frete: R$ {filament.custo_por_kg.toFixed(2)}</p>
+                    <p className="text-xs text-vultrix-light/60">
+                      Custo/Kg (c/ frete)
+                    </p>
+                    <p className="text-lg font-bold text-white">
+                      R${" "}
+                      {(
+                        filament.cost_per_kg_with_shipping ||
+                        filament.custo_por_kg
+                      ).toFixed(2)}
+                    </p>
+                    <p className="text-xs text-vultrix-light/50">
+                      s/ frete: R$ {filament.custo_por_kg.toFixed(2)}
+                    </p>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => handleOpenModal(filament)} className="p-2 hover:bg-vultrix-gray rounded-lg">
+                    <button
+                      onClick={() => handleOpenModal(filament)}
+                      className="p-2 hover:bg-vultrix-gray rounded-lg"
+                    >
                       <Edit2 className="text-vultrix-light/70" size={16} />
                     </button>
                     <button
@@ -1733,7 +2118,10 @@ export default function FilamentosPage() {
                     >
                       <RefreshCcw className="text-vultrix-light/70" size={16} />
                     </button>
-                    <button onClick={() => handleDelete(filament.id)} className="p-2 hover:bg-red-500/20 rounded-lg">
+                    <button
+                      onClick={() => handleDelete(filament.id)}
+                      className="p-2 hover:bg-red-500/20 rounded-lg"
+                    >
                       <Trash2 className="text-red-500" size={16} />
                     </button>
                   </div>
@@ -1767,18 +2155,22 @@ export default function FilamentosPage() {
             >
               <div className="sticky top-0 bg-vultrix-dark border-b border-vultrix-gray p-6 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
-                    <p className="text-xs uppercase tracking-widest text-vultrix-light/60">
-                      {modalHeading.label}
-                    </p>
-                    <h2 className="text-2xl font-bold text-white">{modalHeading.title}</h2>
+                  <p className="text-xs uppercase tracking-widest text-vultrix-light/60">
+                    {modalHeading.label}
+                  </p>
+                  <h2 className="text-2xl font-bold text-white">
+                    {modalHeading.title}
+                  </h2>
                 </div>
-                  {!editingId && !isRestockMode && (
+                {!editingId && !isRestockMode && (
                   <div className="bg-vultrix-black border border-vultrix-gray rounded-lg flex overflow-hidden">
                     <button
                       type="button"
                       onClick={() => setFormMode("single")}
                       className={`px-4 py-2 text-sm font-medium ${
-                        formMode === "single" ? "bg-vultrix-accent text-white" : "text-vultrix-light/70"
+                        formMode === "single"
+                          ? "bg-vultrix-accent text-white"
+                          : "text-vultrix-light/70"
                       }`}
                     >
                       Individual
@@ -1787,47 +2179,84 @@ export default function FilamentosPage() {
                       type="button"
                       onClick={() => setFormMode("batch")}
                       className={`px-4 py-2 text-sm font-medium ${
-                        formMode === "batch" ? "bg-vultrix-accent text-white" : "text-vultrix-light/70"
+                        formMode === "batch"
+                          ? "bg-vultrix-accent text-white"
+                          : "text-vultrix-light/70"
                       }`}
                     >
                       Compra em lote
                     </button>
                   </div>
                 )}
-                <button onClick={handleCloseModal} className="p-2 hover:bg-vultrix-gray rounded-lg">
+                <button
+                  onClick={handleCloseModal}
+                  className="p-2 hover:bg-vultrix-gray rounded-lg"
+                >
                   <X className="text-vultrix-light/70" size={20} />
                 </button>
               </div>
 
               <div className="flex flex-col lg:flex-row max-h-[calc(95vh-140px)] overflow-hidden">
                 <div className="flex-1 lg:flex-[1.55] overflow-y-auto p-6 lg:p-8 space-y-6 lg:space-y-8">
-                  {isRestockMode ? renderRestockForm() : formMode === "single" ? renderIndividualForm() : renderBatchForm()}
+                  {isRestockMode
+                    ? renderRestockForm()
+                    : formMode === "single"
+                      ? renderIndividualForm()
+                      : renderBatchForm()}
                 </div>
                 <div className="lg:w-80 lg:flex-none lg:min-w-[300px] border-t lg:border-t-0 lg:border-l border-vultrix-gray bg-gradient-to-b from-vultrix-black/70 via-vultrix-dark/90 to-vultrix-black p-6 lg:p-7 space-y-6 lg:space-y-7">
                   {isRestockMode ? (
                     <>
                       <div>
-                        <p className="text-xs uppercase tracking-[0.08em] text-vultrix-light/60">Resumo da reposição</p>
-                        <h3 className="text-3xl font-bold text-white leading-tight">{restockForm.weight || 0} g</h3>
-                        <p className="text-sm text-vultrix-light/60">peso informado nesta compra</p>
+                        <p className="text-xs uppercase tracking-[0.08em] text-vultrix-light/60">
+                          Resumo da reposição
+                        </p>
+                        <h3 className="text-3xl font-bold text-white leading-tight">
+                          {restockForm.weight || 0} g
+                        </h3>
+                        <p className="text-sm text-vultrix-light/60">
+                          peso informado nesta compra
+                        </p>
                       </div>
                       <div className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4 space-y-3">
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-vultrix-light/70">Estoque projetado</span>
+                          <span className="text-vultrix-light/70">
+                            Estoque projetado
+                          </span>
                           <span className="text-white font-semibold text-lg">
-                            {(restockWeightedPreview?.newTotalWeight || restockTarget?.peso_atual || 0).toLocaleString()} g
+                            {(
+                              restockWeightedPreview?.newTotalWeight ||
+                              restockTarget?.peso_atual ||
+                              0
+                            ).toLocaleString()}{" "}
+                            g
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-vultrix-light/70">Custo/kg (s/ frete)</span>
+                          <span className="text-vultrix-light/70">
+                            Custo/kg (s/ frete)
+                          </span>
                           <span className="text-white font-semibold text-lg">
-                            R$ {(restockWeightedPreview?.weightedBase ?? restockTarget?.custo_por_kg ?? 0).toFixed(2)}
+                            R${" "}
+                            {(
+                              restockWeightedPreview?.weightedBase ??
+                              restockTarget?.custo_por_kg ??
+                              0
+                            ).toFixed(2)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-vultrix-light/70">Custo/kg (c/ frete)</span>
+                          <span className="text-vultrix-light/70">
+                            Custo/kg (c/ frete)
+                          </span>
                           <span className="text-white font-semibold text-lg">
-                            R$ {(restockWeightedPreview?.weightedWithShipping ?? (restockTarget?.cost_per_kg_with_shipping || restockTarget?.custo_por_kg || 0)).toFixed(2)}
+                            R${" "}
+                            {(
+                              restockWeightedPreview?.weightedWithShipping ??
+                              (restockTarget?.cost_per_kg_with_shipping ||
+                                restockTarget?.custo_por_kg ||
+                                0)
+                            ).toFixed(2)}
                           </span>
                         </div>
                       </div>
@@ -1837,40 +2266,61 @@ export default function FilamentosPage() {
                       <div>
                         <p className="text-sm text-vultrix-light/70">Resumo</p>
                         <h3 className="text-2xl font-bold text-white">
-                          {modalSummary.totalItems} {modalSummary.totalItems === 1 ? "item" : "itens"}
+                          {modalSummary.totalItems}{" "}
+                          {modalSummary.totalItems === 1 ? "item" : "itens"}
                         </h3>
-                        <p className="text-sm text-vultrix-light/60">{modalSummary.totalWeightKg.toFixed(2)} kg totais</p>
+                        <p className="text-sm text-vultrix-light/60">
+                          {modalSummary.totalWeightKg.toFixed(2)} kg totais
+                        </p>
                       </div>
                       <div className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4 space-y-3">
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-vultrix-light/70">Peso total</span>
-                          <span className="text-white font-semibold">{modalSummary.totalWeightKg.toFixed(2)} kg</span>
+                          <span className="text-vultrix-light/70">
+                            Peso total
+                          </span>
+                          <span className="text-white font-semibold">
+                            {modalSummary.totalWeightKg.toFixed(2)} kg
+                          </span>
                         </div>
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-vultrix-light/70">Custo médio/kg (c/ frete)</span>
-                          <span className="text-white font-semibold">R$ {modalSummary.avgCostKgWithShipping.toFixed(2)}</span>
+                          <span className="text-vultrix-light/70">
+                            Custo médio/kg (c/ frete)
+                          </span>
+                          <span className="text-white font-semibold">
+                            R$ {modalSummary.avgCostKgWithShipping.toFixed(2)}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-vultrix-light/70">Custo médio/kg (s/ frete)</span>
-                          <span className="text-white font-semibold">R$ {modalSummary.avgCostKg.toFixed(2)}</span>
+                          <span className="text-vultrix-light/70">
+                            Custo médio/kg (s/ frete)
+                          </span>
+                          <span className="text-white font-semibold">
+                            R$ {modalSummary.avgCostKg.toFixed(2)}
+                          </span>
                         </div>
                       </div>
                     </>
                   )}
                   <div className="space-y-2">
-                    <p className="text-xs text-vultrix-light/60 uppercase tracking-wider">Atalhos</p>
+                    <p className="text-xs text-vultrix-light/60 uppercase tracking-wider">
+                      Atalhos
+                    </p>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => {
                           if (isRestockMode) {
-                            const url = restockForm.purchaseUrl || restockTarget?.purchase_url;
+                            const url =
+                              restockForm.purchaseUrl ||
+                              restockTarget?.purchase_url;
                             if (url) navigator.clipboard.writeText(url);
                           } else if (formMode === "single") {
                             const url = individualItems[0]?.purchase_url;
                             if (url) navigator.clipboard.writeText(url);
                           } else if (sharedPurchase.purchase_url) {
-                            navigator.clipboard.writeText(sharedPurchase.purchase_url);
+                            navigator.clipboard.writeText(
+                              sharedPurchase.purchase_url,
+                            );
                           }
                         }}
                         className="flex items-center justify-center gap-2 px-3 py-2 border border-vultrix-gray rounded-lg text-sm text-vultrix-light/70 hover:text-white"
@@ -1881,19 +2331,29 @@ export default function FilamentosPage() {
                         type="button"
                         onClick={() => {
                           if (isRestockMode) {
-                            const base = restockForm.costPerKg || (restockForm.costTotal && restockCostPreview.weightKg > 0
-                              ? restockForm.costTotal / restockCostPreview.weightKg
-                              : 0);
+                            const base =
+                              restockForm.costPerKg ||
+                              (restockForm.costTotal &&
+                              restockCostPreview.weightKg > 0
+                                ? restockForm.costTotal /
+                                  restockCostPreview.weightKg
+                                : 0);
                             const text = `Reposição ${restockTarget?.nome || ""} - ${restockForm.weight}g - R$${base.toFixed(2)}/kg`;
                             navigator.clipboard.writeText(text);
                           } else if (formMode === "single") {
                             const text = individualItems
-                              .map((item) => `${item.nome} - ${item.peso_atual}g - R$${item.custo_por_kg}`)
+                              .map(
+                                (item) =>
+                                  `${item.nome} - ${item.peso_atual}g - R$${item.custo_por_kg}`,
+                              )
                               .join("\n");
                             navigator.clipboard.writeText(text);
                           } else {
                             const text = batchItems
-                              .map((item) => `${item.nome} - ${item.peso_atual}g - R$${item.custo_por_kg}`)
+                              .map(
+                                (item) =>
+                                  `${item.nome} - ${item.peso_atual}g - R$${item.custo_por_kg}`,
+                              )
                               .join("\n");
                             navigator.clipboard.writeText(text);
                           }
@@ -1937,27 +2397,41 @@ export default function FilamentosPage() {
             >
               <div className="p-6 border-b border-vultrix-gray flex items-center justify-between">
                 <h2 className="text-xl font-bold text-white">Nova marca</h2>
-                <button onClick={() => setBrandModalOpen(false)} className="p-2 hover:bg-vultrix-gray rounded-lg">
+                <button
+                  onClick={() => setBrandModalOpen(false)}
+                  className="p-2 hover:bg-vultrix-gray rounded-lg"
+                >
                   <X className="text-vultrix-light/70" size={18} />
                 </button>
               </div>
               <div className="p-6 space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm text-vultrix-light/70">Nome *</label>
+                  <label className="text-sm text-vultrix-light/70">
+                    Nome *
+                  </label>
                   <input
                     type="text"
                     value={newBrand.name}
-                    onChange={(e) => setNewBrand((prev) => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) =>
+                      setNewBrand((prev) => ({ ...prev, name: e.target.value }))
+                    }
                     className="w-full px-4 py-2 bg-vultrix-black border border-vultrix-gray rounded-lg text-white"
                     placeholder="Ex: Creality"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm text-vultrix-light/70">Website</label>
+                  <label className="text-sm text-vultrix-light/70">
+                    Website
+                  </label>
                   <input
                     type="url"
                     value={newBrand.website}
-                    onChange={(e) => setNewBrand((prev) => ({ ...prev, website: e.target.value }))}
+                    onChange={(e) =>
+                      setNewBrand((prev) => ({
+                        ...prev,
+                        website: e.target.value,
+                      }))
+                    }
                     className="w-full px-4 py-2 bg-vultrix-black border border-vultrix-gray rounded-lg text-white"
                     placeholder="https://..."
                   />

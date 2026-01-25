@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
               console.log(`   🎯 ${matches.length} match(es) encontrado(s)`);
               const sum = matches.reduce((acc, m) => acc + parseFloat(m[1]), 0);
               if (sum > 0) {
-                totalWeightGrams = sum;
+                totalWeightGrams = Math.round(sum * 100) / 100; // Arredondar para 2 decimais
                 console.log(`   ✅ Peso encontrado: ${totalWeightGrams}g`);
                 break;
               }
@@ -235,11 +235,43 @@ export async function POST(request: NextRequest) {
 
           // ===== BUSCAR MATERIAIS/AMS =====
           console.log(`   🔎 Buscando materiais...`);
+          
+          // Padrão 0: GCode header com filament length por cor (MAIS CONFIÁVEL)
+          // ; total filament length [mm] : 10135.71,4742.24,4787.63
+          if (materials.length === 0) {
+            const filamentLengthMatch = content.match(/;\s*total filament length \[mm\]\s*:\s*([0-9.,\s]+)/i);
+            if (filamentLengthMatch) {
+              const lengths = filamentLengthMatch[1].split(',').map(l => parseFloat(l.trim())).filter(l => !isNaN(l) && l > 0);
+              console.log(`   🎨 Encontrados ${lengths.length} filamentos por comprimento: ${lengths.join(', ')}mm`);
+              
+              // Converter mm para gramas (PLA 1.75mm: ~2.98g/m = 0.00298g/mm)
+              const gramsPerMm = 0.00298;
+              lengths.forEach((lengthMm, index) => {
+                const weightG = Math.round(lengthMm * gramsPerMm * 100) / 100;
+                materials.push({
+                  slot_index: index + 1,
+                  material_type: 'PLA',
+                  color_name: `Cor ${index + 1}`,
+                  color_hex: ['#FF5733', '#33FF57', '#3357FF', '#FFD700', '#FF33FF', '#33FFFF'][index] || '#CCCCCC',
+                  weight_grams: weightG,
+                });
+              });
+              
+              // Também calcular peso total se não tiver
+              if (totalWeightGrams === null && materials.length > 0) {
+                totalWeightGrams = Math.round(materials.reduce((sum, m) => sum + m.weight_grams, 0) * 100) / 100;
+                console.log(`   ✅ Peso total calculado: ${totalWeightGrams}g`);
+              }
+            }
+          }
+          
+          // Padrão 1: Formato JSON completo do AMS
           const amsPattern =
             /"filament_id"[:\s]*"(\d+)"[^}]*"filament_type"[:\s]*"([^"]+)"[^}]*"filament_color"[:\s]*"([^"]+)"[^}]*"used_g"[:\s]*"?(\d+\.?\d*)"?/gi;
           const amsMatches = Array.from(content.matchAll(amsPattern));
 
           if (amsMatches.length > 0 && materials.length === 0) {
+            console.log(`   🎨 Encontrados ${amsMatches.length} materiais (padrão AMS)`);
             amsMatches.forEach((match, index) => {
               const slotId = match[1];
               const materialType = match[2];
@@ -258,6 +290,69 @@ export async function POST(request: NextRequest) {
                 });
               }
             });
+          }
+
+          // Padrão 2: filament_used_g e filament_colour arrays (Bambu Studio)
+          if (materials.length === 0) {
+            // Procurar arrays de peso por filamento
+            const usedGMatch = content.match(/"filament_used_g"\s*:\s*\[([^\]]+)\]/i);
+            const colorMatch = content.match(/"filament_colour"\s*:\s*\[([^\]]+)\]/i) ||
+                               content.match(/"filament_color"\s*:\s*\[([^\]]+)\]/i);
+            const typeMatch = content.match(/"filament_type"\s*:\s*\[([^\]]+)\]/i);
+            
+            if (usedGMatch) {
+              const weights = usedGMatch[1].split(',').map(w => parseFloat(w.replace(/["'\s]/g, ''))).filter(w => !isNaN(w));
+              const colors = colorMatch ? colorMatch[1].split(',').map(c => c.replace(/["'\s]/g, '').trim()) : [];
+              const types = typeMatch ? typeMatch[1].split(',').map(t => t.replace(/["'\s]/g, '').trim()) : [];
+              
+              console.log(`   🎨 Encontrados ${weights.length} filamentos via arrays`);
+              console.log(`      Pesos: ${weights.join(', ')}g`);
+              console.log(`      Cores: ${colors.join(', ')}`);
+              
+              weights.forEach((weight, index) => {
+                if (weight > 0) {
+                  const color = colors[index] || '#CCCCCC';
+                  materials.push({
+                    slot_index: index + 1,
+                    material_type: types[index] || 'PLA',
+                    color_name: color.toUpperCase(),
+                    color_hex: color.startsWith('#') ? color : `#${color}`,
+                    weight_grams: weight,
+                  });
+                }
+              });
+            }
+          }
+          
+          // Padrão 3: slice_info com plates (Bambu Studio)
+          if (materials.length === 0 && content.includes('"plates"')) {
+            try {
+              const jsonMatch = content.match(/\{[\s\S]*"plates"[\s\S]*\}/);
+              if (jsonMatch) {
+                const sliceData = JSON.parse(jsonMatch[0]);
+                if (sliceData.plates && Array.isArray(sliceData.plates)) {
+                  sliceData.plates.forEach((plate: any) => {
+                    if (plate.filaments && Array.isArray(plate.filaments)) {
+                      plate.filaments.forEach((fil: any, idx: number) => {
+                        const weight = parseFloat(fil.used_g) || parseFloat(fil.weight) || 0;
+                        if (weight > 0) {
+                          materials.push({
+                            slot_index: fil.id || idx + 1,
+                            material_type: fil.type || 'PLA',
+                            color_name: fil.color || 'Desconhecido',
+                            color_hex: fil.color_hex || '#CCCCCC',
+                            weight_grams: weight,
+                          });
+                        }
+                      });
+                    }
+                  });
+                  console.log(`   🎨 Encontrados ${materials.length} materiais via plates`);
+                }
+              }
+            } catch (e) {
+              // Não é JSON válido
+            }
           }
 
           // Procurar especificamente no projeto principal do Bambu
