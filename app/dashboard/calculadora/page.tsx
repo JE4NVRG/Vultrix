@@ -216,8 +216,10 @@ export default function CalculadoraProjetosPage() {
   const handleFileUpload = useCallback(async (file: File) => {
     if (!file) return;
     
-    const ext = file.name.toLowerCase().split(".").pop();
-    if (ext !== "gcode" && ext !== "3mf") {
+    const isGCode = file.name.toLowerCase().endsWith(".gcode");
+    const is3mf = file.name.toLowerCase().endsWith(".3mf");
+    
+    if (!isGCode && !is3mf) {
       setUploadError("Arquivo deve ser .gcode ou .3mf");
       return;
     }
@@ -229,53 +231,75 @@ export default function CalculadoraProjetosPage() {
       const formData = new FormData();
       formData.append("file", file);
       
-      const endpoint = ext === "gcode" ? "/api/gcode/extract" : "/api/3mf/extract";
+      const endpoint = isGCode ? "/api/gcode/extract" : "/api/3mf/extract";
       const res = await fetch(endpoint, { method: "POST", body: formData });
       const data = await res.json();
+      
+      console.log(`✅ Dados extraídos do ${isGCode ? "GCode" : "3MF"}:`, data);
       
       if (!res.ok) {
         throw new Error(data.error || "Erro ao processar arquivo");
       }
       
+      // AVISO: se enviou .3mf mas não tem breakdown de materiais
+      if (is3mf && (!data.materials || data.materials.length === 0)) {
+        setUploadError(
+          "⚠️ .3mf não contém breakdown de materiais. Para melhor precisão, exporte o .gcode do fatiador!"
+        );
+      }
+      
       // Extrair nome do arquivo
       const fileName = file.name.replace(/\.(gcode|3mf)$/i, "");
       if (!project.name) {
-        setProject((p) => ({ ...p, name: fileName }));
+        setProject((p) => ({ ...p, name: data.name || fileName }));
       }
       
+      // Verificar se conseguiu extrair tempo e peso
+      const hasTime = data.estimated_time_minutes !== null && data.estimated_time_minutes !== undefined;
+      const hasWeight = data.total_weight_grams !== null && data.total_weight_grams !== undefined;
+      const hasMaterials = data.materials && data.materials.length > 0;
+      
       // Extrair tempo
-      if (data.printTimeMinutes) {
-        setTimeHours(data.printTimeMinutes / 60);
-      } else if (data.printTimeHours) {
-        setTimeHours(data.printTimeHours);
+      if (hasTime) {
+        setTimeHours(data.estimated_time_minutes / 60);
       }
       
       // Extrair peso
-      if (data.totalWeightGrams) {
-        setTotalWeightGrams(data.totalWeightGrams);
-        // Atualizar primeiro filamento com peso total
-        setSelectedFilaments((prev) => {
-          if (prev.length === 1 && prev[0].weight_grams === 0) {
-            return [{ ...prev[0], weight_grams: data.totalWeightGrams }];
-          }
-          return prev;
-        });
+      if (hasWeight) {
+        setTotalWeightGrams(data.total_weight_grams);
       }
       
-      // Se tiver múltiplos materiais
-      if (data.materials && data.materials.length > 0) {
-        const newFilaments: SelectedFilament[] = data.materials.map((m: { weightGrams: number }) => ({
+      // Se tiver múltiplos materiais, criar filamentos para cada um
+      if (hasMaterials) {
+        const newFilaments: SelectedFilament[] = data.materials.map((mat: { weight_grams: number; material_type?: string; name?: string }) => ({
           id: makeId(),
           filament_id: "",
-          weight_grams: m.weightGrams || 0,
+          weight_grams: mat.weight_grams || 0,
         }));
+        
         if (newFilaments.some((f) => f.weight_grams > 0)) {
           setSelectedFilaments(newFilaments);
+          console.log(`🎨 ${newFilaments.length} materiais detectados!`);
         }
+      } else if (hasWeight && data.total_weight_grams > 0) {
+        // Se só tiver peso total, atualizar primeiro filamento
+        setSelectedFilaments([{
+          id: makeId(),
+          filament_id: "",
+          weight_grams: data.total_weight_grams,
+        }]);
+      }
+      
+      // Feedback de sucesso
+      if (!hasTime || !hasWeight) {
+        setUploadError(
+          "⚠️ Não foi possível extrair todos os dados. Verifique/complete manualmente."
+        );
       }
       
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Erro ao processar arquivo";
+      console.error("❌ Erro ao processar arquivo:", err);
       setUploadError(errorMessage);
     } finally {
       setUploading(false);
@@ -290,33 +314,56 @@ export default function CalculadoraProjetosPage() {
     
     try {
       const formData = new FormData();
-      formData.append("image", file);
+      formData.append("file", file);
       
       const res = await fetch("/api/vision/bambu", { method: "POST", body: formData });
       const data = await res.json();
+      
+      console.log("🖼️ Dados da Vision API:", data);
       
       if (!res.ok) {
         throw new Error(data.error || "Erro ao ler imagem");
       }
       
-      if (data.printTimeMinutes) {
-        setTimeHours(data.printTimeMinutes / 60);
+      // total_time_hours vem em horas decimais
+      if (data.total_time_hours && data.total_time_hours > 0) {
+        setTimeHours(data.total_time_hours);
       }
-      if (data.totalWeightGrams) {
-        setTotalWeightGrams(data.totalWeightGrams);
-        setSelectedFilaments((prev) => {
-          if (prev.length === 1 && prev[0].weight_grams === 0) {
-            return [{ ...prev[0], weight_grams: data.totalWeightGrams }];
-          }
-          return prev;
-        });
+      
+      // Peso total
+      if (data.total_weight_grams && data.total_weight_grams > 0) {
+        setTotalWeightGrams(data.total_weight_grams);
       }
+      
+      // Materiais
+      if (data.materials && data.materials.length > 0) {
+        const newFilaments: SelectedFilament[] = data.materials.map((mat: { weight_grams: number }) => ({
+          id: makeId(),
+          filament_id: "",
+          weight_grams: mat.weight_grams || 0,
+        }));
+        
+        if (newFilaments.some((f) => f.weight_grams > 0)) {
+          setSelectedFilaments(newFilaments);
+          console.log(`🎨 ${newFilaments.length} materiais detectados via Vision!`);
+        }
+      } else if (data.total_weight_grams > 0) {
+        // Se só tiver peso total
+        setSelectedFilaments([{
+          id: makeId(),
+          filament_id: "",
+          weight_grams: data.total_weight_grams,
+        }]);
+      }
+      
+      // Nome do projeto das notas
       if (data.notes && !project.name) {
         setProject((p) => ({ ...p, name: data.notes }));
       }
       
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Erro ao processar imagem";
+      console.error("❌ Erro na Vision API:", err);
       setVisionError(errorMessage);
     } finally {
       setVisionUploading(false);
