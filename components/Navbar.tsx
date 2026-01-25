@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Menu, X } from 'lucide-react'
+import { Menu, X, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 
 export default function Navbar() {
@@ -12,8 +12,6 @@ export default function Navbar() {
   const navLinks = [
     { href: '/', label: 'Home' },
     { href: '/servicos', label: 'Serviços' },
-    { href: '/projetos', label: 'Projetos' },
-    { href: '/cursos', label: 'Cursos' },
     { href: '/loja', label: 'Loja' },
     { href: '/contato', label: 'Contato' },
   ]
@@ -30,7 +28,7 @@ export default function Navbar() {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
+          <div className="hidden md:flex items-center space-x-6">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
@@ -42,6 +40,15 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
+            <Link
+              href="/ferramenta"
+              className={`text-sm font-medium transition-colors hover:text-green-400 flex items-center gap-1 ${
+                isActive('/ferramenta') ? 'text-green-400' : 'text-green-300'
+              }`}
+            >
+              <Sparkles size={14} />
+              Ferramenta
+            </Link>
             <Link
               href="/login"
               className="px-4 py-2 bg-vultrix-accent text-white rounded-lg text-sm font-medium hover:bg-vultrix-accent/90 transition-colors"
@@ -76,6 +83,14 @@ export default function Navbar() {
                   {link.label}
                 </Link>
               ))}
+              <Link
+                href="/ferramenta"
+                onClick={() => setIsOpen(false)}
+                className="text-sm font-medium transition-colors text-green-300 hover:text-green-400 flex items-center gap-1"
+              >
+                <Sparkles size={14} />
+                Ferramenta Grátis
+              </Link>
               <Link
                 href="/login"
                 onClick={() => setIsOpen(false)}
