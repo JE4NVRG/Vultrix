@@ -24,6 +24,17 @@ import {
   CheckCircle2,
   Circle,
   AlertTriangle,
+  Calculator,
+  ShoppingCart,
+  Plus,
+  ArrowRight,
+  Sparkles,
+  Lightbulb,
+  Target,
+  Zap,
+  RefreshCw,
+  BarChart3,
+  Box,
 } from "lucide-react";
 
 type BalanceData = {
@@ -37,6 +48,9 @@ type BalanceData = {
 type DashboardMetrics = {
   balance: BalanceData;
   totalVendas: number;
+  totalProdutos: number;
+  totalFilamentos: number;
+  totalImpressoras: number;
   produtoMaisVendido: {
     nome: string;
     quantidade: number;
@@ -50,6 +64,7 @@ type DashboardMetrics = {
     data: string;
     valor: number;
   }>;
+  filamentosEstoqueBaixo: number;
 };
 
 export default function DashboardPage() {
@@ -69,19 +84,40 @@ export default function DashboardPage() {
       receita_liquida: 0,
     },
     totalVendas: 0,
+    totalProdutos: 0,
+    totalFilamentos: 0,
+    totalImpressoras: 0,
     produtoMaisVendido: null,
     filamentoMaisConsumido: null,
     vendasPorDia: [],
+    filamentosEstoqueBaixo: 0,
   });
 
   const [loading, setLoading] = useState(true);
+  const [makerTip, setMakerTip] = useState<string>("");
+  const [tipLoading, setTipLoading] = useState(true);
   const [mesAtual] = useState(
     new Date().toLocaleString("pt-BR", { month: "long", year: "numeric" }),
   );
 
+  // Carregar dica do maker
+  const loadMakerTip = async () => {
+    try {
+      setTipLoading(true);
+      const response = await fetch('/api/maker-tip');
+      const data = await response.json();
+      setMakerTip(data.tip);
+    } catch (error) {
+      setMakerTip('💡 Continue focado no seu negócio maker! Cada impressão é um passo para o sucesso.');
+    } finally {
+      setTipLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (user) {
       loadMetrics();
+      loadMakerTip();
     }
   }, [user]);
 
@@ -213,6 +249,29 @@ export default function DashboardPage() {
             )
           : null;
 
+      // Contagem de produtos, filamentos e impressoras
+      const { count: produtosCount } = await supabase
+        .from("products")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user!.id);
+
+      const { count: filamentosCount } = await supabase
+        .from("filaments")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user!.id);
+
+      const { count: impressorasCount } = await supabase
+        .from("printers")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user!.id);
+
+      // Filamentos com estoque baixo (menos de 200g)
+      const { count: estoqueBaixoCount } = await supabase
+        .from("filaments")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user!.id)
+        .lt("peso_disponivel", 200);
+
       // Vendas por dia (últimos 7 dias)
       const vendasPorDia: Array<{ data: string; valor: number }> = [];
       for (let i = 6; i >= 0; i--) {
@@ -238,9 +297,13 @@ export default function DashboardPage() {
       setMetrics({
         balance,
         totalVendas,
+        totalProdutos: produtosCount || 0,
+        totalFilamentos: filamentosCount || 0,
+        totalImpressoras: impressorasCount || 0,
         produtoMaisVendido,
         filamentoMaisConsumido,
         vendasPorDia,
+        filamentosEstoqueBaixo: estoqueBaixoCount || 0,
       });
     } catch (error: any) {
       console.error("Erro ao carregar métricas:", error?.message || error?.details || JSON.stringify(error) || error);
@@ -328,6 +391,165 @@ export default function DashboardPage() {
               Completar Perfil
             </Link>
           )}
+        </div>
+      </motion.div>
+
+      {/* Dica do Maker IA */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="bg-gradient-to-r from-vultrix-accent/10 to-purple-500/10 border border-vultrix-accent/20 rounded-xl p-5"
+      >
+        <div className="flex items-start gap-4">
+          <div className="bg-vultrix-accent/20 p-3 rounded-lg flex-shrink-0">
+            <Sparkles className="text-vultrix-accent" size={24} />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-sm font-semibold text-vultrix-accent">Dica do Maker IA</h3>
+              <button
+                onClick={loadMakerTip}
+                className="text-vultrix-light/40 hover:text-vultrix-accent transition-colors"
+                title="Nova dica"
+              >
+                <RefreshCw size={14} className={tipLoading ? 'animate-spin' : ''} />
+              </button>
+            </div>
+            {tipLoading ? (
+              <div className="h-5 bg-vultrix-gray/50 rounded animate-pulse w-3/4"></div>
+            ) : (
+              <p className="text-vultrix-light/80 text-sm leading-relaxed">{makerTip}</p>
+            )}
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Acessos Rápidos */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+      >
+        <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+          <Zap size={18} className="text-yellow-400" />
+          Acessos Rápidos
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <Link
+            href="/dashboard/calculadora"
+            className="bg-vultrix-dark border border-vultrix-gray hover:border-vultrix-accent/50 rounded-xl p-4 flex flex-col items-center gap-2 transition-all hover:scale-105 group"
+          >
+            <div className="bg-blue-500/10 p-3 rounded-lg group-hover:bg-blue-500/20 transition-colors">
+              <Calculator className="text-blue-400" size={22} />
+            </div>
+            <span className="text-white text-sm font-medium">Calculadora</span>
+          </Link>
+          
+          <Link
+            href="/dashboard/produtos"
+            className="bg-vultrix-dark border border-vultrix-gray hover:border-vultrix-accent/50 rounded-xl p-4 flex flex-col items-center gap-2 transition-all hover:scale-105 group"
+          >
+            <div className="bg-green-500/10 p-3 rounded-lg group-hover:bg-green-500/20 transition-colors">
+              <Package className="text-green-400" size={22} />
+            </div>
+            <span className="text-white text-sm font-medium">Produtos</span>
+          </Link>
+          
+          <Link
+            href="/dashboard/vendas"
+            className="bg-vultrix-dark border border-vultrix-gray hover:border-vultrix-accent/50 rounded-xl p-4 flex flex-col items-center gap-2 transition-all hover:scale-105 group"
+          >
+            <div className="bg-purple-500/10 p-3 rounded-lg group-hover:bg-purple-500/20 transition-colors">
+              <ShoppingCart className="text-purple-400" size={22} />
+            </div>
+            <span className="text-white text-sm font-medium">Vendas</span>
+          </Link>
+          
+          <Link
+            href="/dashboard/filamentos"
+            className="bg-vultrix-dark border border-vultrix-gray hover:border-vultrix-accent/50 rounded-xl p-4 flex flex-col items-center gap-2 transition-all hover:scale-105 group"
+          >
+            <div className="bg-cyan-500/10 p-3 rounded-lg group-hover:bg-cyan-500/20 transition-colors">
+              <Layers className="text-cyan-400" size={22} />
+            </div>
+            <span className="text-white text-sm font-medium">Filamentos</span>
+          </Link>
+          
+          <Link
+            href="/dashboard/impressoras"
+            className="bg-vultrix-dark border border-vultrix-gray hover:border-vultrix-accent/50 rounded-xl p-4 flex flex-col items-center gap-2 transition-all hover:scale-105 group"
+          >
+            <div className="bg-orange-500/10 p-3 rounded-lg group-hover:bg-orange-500/20 transition-colors">
+              <Printer className="text-orange-400" size={22} />
+            </div>
+            <span className="text-white text-sm font-medium">Impressoras</span>
+          </Link>
+          
+          <Link
+            href="/dashboard/aportes"
+            className="bg-vultrix-dark border border-vultrix-gray hover:border-vultrix-accent/50 rounded-xl p-4 flex flex-col items-center gap-2 transition-all hover:scale-105 group"
+          >
+            <div className="bg-pink-500/10 p-3 rounded-lg group-hover:bg-pink-500/20 transition-colors">
+              <Wallet className="text-pink-400" size={22} />
+            </div>
+            <span className="text-white text-sm font-medium">Aportes</span>
+          </Link>
+        </div>
+      </motion.div>
+
+      {/* Resumo do Negócio */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="grid grid-cols-2 md:grid-cols-4 gap-4"
+      >
+        <div className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <Package className="text-green-400" size={20} />
+            <span className="text-xs text-vultrix-light/50">Produtos</span>
+          </div>
+          <p className="text-2xl font-bold text-white">{metrics.totalProdutos}</p>
+          <Link href="/dashboard/produtos" className="text-xs text-vultrix-accent hover:underline flex items-center gap-1 mt-1">
+            Ver todos <ArrowRight size={12} />
+          </Link>
+        </div>
+        
+        <div className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <Layers className="text-cyan-400" size={20} />
+            <span className="text-xs text-vultrix-light/50">Filamentos</span>
+          </div>
+          <p className="text-2xl font-bold text-white">{metrics.totalFilamentos}</p>
+          {metrics.filamentosEstoqueBaixo > 0 && (
+            <p className="text-xs text-yellow-400 flex items-center gap-1 mt-1">
+              <AlertCircle size={12} />
+              {metrics.filamentosEstoqueBaixo} com estoque baixo
+            </p>
+          )}
+        </div>
+        
+        <div className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <Printer className="text-orange-400" size={20} />
+            <span className="text-xs text-vultrix-light/50">Impressoras</span>
+          </div>
+          <p className="text-2xl font-bold text-white">{metrics.totalImpressoras}</p>
+          <Link href="/dashboard/impressoras" className="text-xs text-vultrix-accent hover:underline flex items-center gap-1 mt-1">
+            Gerenciar <ArrowRight size={12} />
+          </Link>
+        </div>
+        
+        <div className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <ShoppingCart className="text-purple-400" size={20} />
+            <span className="text-xs text-vultrix-light/50">Vendas (mês)</span>
+          </div>
+          <p className="text-2xl font-bold text-white">{metrics.totalVendas}</p>
+          <Link href="/dashboard/vendas" className="text-xs text-vultrix-accent hover:underline flex items-center gap-1 mt-1">
+            Registrar <Plus size={12} />
+          </Link>
         </div>
       </motion.div>
 
@@ -439,14 +661,33 @@ export default function DashboardPage() {
       )}
 
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-white mb-2">
-          Dashboard Financeiro
-        </h1>
-        <p className="text-vultrix-light/70 flex items-center gap-2">
-          <Calendar size={16} />
-          {mesAtual}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white mb-1 flex items-center gap-2">
+            <BarChart3 className="text-vultrix-accent" size={24} />
+            Painel Financeiro
+          </h1>
+          <p className="text-vultrix-light/70 flex items-center gap-2 text-sm">
+            <Calendar size={14} />
+            {mesAtual}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Link
+            href="/dashboard/despesas"
+            className="bg-vultrix-gray hover:bg-vultrix-gray/80 text-white text-sm font-medium py-2 px-4 rounded-lg transition-all flex items-center gap-2"
+          >
+            <TrendingDown size={16} />
+            Despesas
+          </Link>
+          <Link
+            href="/dashboard/aportes"
+            className="bg-vultrix-accent hover:bg-vultrix-accent/80 text-white text-sm font-medium py-2 px-4 rounded-lg transition-all flex items-center gap-2"
+          >
+            <Plus size={16} />
+            Novo Aporte
+          </Link>
+        </div>
       </div>
 
       {/* Cards de Métricas Principais */}
