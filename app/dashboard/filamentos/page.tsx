@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Building2,
   Copy,
+  DollarSign,
   Edit2,
   GitMerge,
   Package,
@@ -1859,6 +1860,82 @@ export default function FilamentosPage() {
     }
   };
 
+  // Estado para sincronização
+  const [syncing, setSyncing] = useState(false);
+
+  // Função para sincronizar filamentos existentes com despesas
+  const syncFilamentsToExpenses = async () => {
+    if (!user || filaments.length === 0) {
+      alert("Nenhum filamento para sincronizar");
+      return;
+    }
+
+    const confirmSync = confirm(
+      `Deseja criar despesas para ${filaments.length} filamento(s) já cadastrado(s)?\n\n` +
+      `Isso vai adicionar as despesas com base no custo e data de compra de cada filamento.\n\n` +
+      `⚠️ Verifique se as despesas já não existem para evitar duplicatas.`
+    );
+
+    if (!confirmSync) return;
+
+    setSyncing(true);
+    let created = 0;
+    let errors = 0;
+
+    try {
+      for (const filament of filaments) {
+        // Calcular valor total (peso inicial * custo por kg)
+        const pesoKg = (filament.peso_inicial || filament.peso_atual) / 1000;
+        const custoPorKg = filament.cost_per_kg_with_shipping || filament.custo_por_kg || 0;
+        const valorTotal = pesoKg * custoPorKg;
+
+        if (valorTotal <= 0) continue;
+
+        // Buscar marca
+        const brand = brands.find((b) => b.id === filament.brand_id);
+        const marcaNome = brand?.name || filament.marca || "Sem marca";
+
+        // Criar descrição
+        let descricao = `Compra de filamento: ${filament.nome} (${marcaNome}) - ${pesoKg.toFixed(2)}kg x R$${custoPorKg.toFixed(2)}/kg`;
+        
+        // Adicionar frete se houver
+        if (filament.purchase_shipping_total && filament.purchase_shipping_total > 0) {
+          descricao += ` | Frete: R$${filament.purchase_shipping_total.toFixed(2)}`;
+        }
+
+        // Calcular valor total com frete
+        const valorComFrete = valorTotal + (filament.shipping_share_value || 0) + (filament.fees_share_value || 0);
+
+        try {
+          await supabase.from("expenses").insert({
+            user_id: user.id,
+            categoria: "material",
+            descricao: descricao,
+            valor: valorComFrete,
+            data: filament.data_compra,
+            recorrente: false,
+          });
+          created++;
+        } catch (err) {
+          console.error("Erro ao criar despesa para", filament.nome, err);
+          errors++;
+        }
+      }
+
+      alert(
+        `✅ Sincronização concluída!\n\n` +
+        `• ${created} despesa(s) criada(s)\n` +
+        `• ${errors} erro(s)\n\n` +
+        `As despesas agora aparecem no dashboard e na página de despesas.`
+      );
+    } catch (error) {
+      console.error("Erro na sincronização:", error);
+      alert("Erro ao sincronizar filamentos com despesas");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!user) return;
 
@@ -1976,7 +2053,16 @@ export default function FilamentosPage() {
             Gestão visual e inteligente de estoque
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={syncFilamentsToExpenses}
+            disabled={syncing || filaments.length === 0}
+            className="flex items-center gap-2 px-4 py-2 border border-green-500/50 rounded-lg text-green-400 hover:bg-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Criar despesas para filamentos já cadastrados"
+          >
+            <DollarSign size={18} className={syncing ? 'animate-pulse' : ''} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar Despesas'}
+          </button>
           <button
             onClick={() => setBrandModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 border border-vultrix-gray rounded-lg text-white hover:bg-vultrix-gray/40"
