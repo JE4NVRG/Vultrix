@@ -128,8 +128,10 @@ export default function DashboardPage() {
       const hoje = new Date();
       const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
       const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+      const dataInicio = primeiroDiaMes.toISOString().split("T")[0];
+      const dataFim = ultimoDiaMes.toISOString().split("T")[0];
 
-      // Calcular saldo usando função do Supabase
+      // Inicializar balance
       let balance: BalanceData = {
         total_vendas: 0,
         total_aportes: 0,
@@ -138,23 +140,61 @@ export default function DashboardPage() {
         receita_liquida: 0,
       };
       
+      // Tentar usar função RPC, senão calcular manualmente
       try {
         const { data: balanceData, error: balanceError } = await supabase.rpc(
           "calculate_balance",
           {
             p_user_id: user!.id,
-            p_data_inicio: primeiroDiaMes.toISOString().split("T")[0],
-            p_data_fim: ultimoDiaMes.toISOString().split("T")[0],
+            p_data_inicio: dataInicio,
+            p_data_fim: dataFim,
           },
         );
 
         if (balanceError) {
-          console.warn("Função calculate_balance não disponível:", balanceError.message);
-        } else {
-          balance = balanceData?.[0] || balance;
+          throw balanceError;
         }
+        balance = balanceData?.[0] || balance;
       } catch (rpcError) {
-        console.warn("Erro ao chamar calculate_balance (pode não existir):", rpcError);
+        console.warn("Calculando saldo manualmente...");
+        
+        // Buscar vendas do mês
+        const { data: vendasData } = await supabase
+          .from("sales")
+          .select("sale_price, quantity")
+          .eq("user_id", user!.id)
+          .gte("data", dataInicio)
+          .lte("data", dataFim);
+        
+        const totalVendasCalc = vendasData?.reduce((sum, v) => sum + (v.sale_price * v.quantity), 0) || 0;
+        
+        // Buscar aportes do mês (tabela capital_contributions)
+        const { data: aportesData } = await supabase
+          .from("capital_contributions")
+          .select("valor")
+          .eq("user_id", user!.id)
+          .gte("data", dataInicio)
+          .lte("data", dataFim);
+        
+        const totalAportes = aportesData?.reduce((sum, a) => sum + a.valor, 0) || 0;
+        
+        // Buscar despesas do mês
+        const { data: despesasData } = await supabase
+          .from("expenses")
+          .select("valor")
+          .eq("user_id", user!.id)
+          .gte("data", dataInicio)
+          .lte("data", dataFim);
+        
+        const totalDespesas = despesasData?.reduce((sum, d) => sum + d.valor, 0) || 0;
+        
+        balance = {
+          total_vendas: totalVendasCalc,
+          total_aportes: totalAportes,
+          total_despesas: totalDespesas,
+          saldo_final: totalVendasCalc + totalAportes - totalDespesas,
+          receita_liquida: totalVendasCalc - totalDespesas,
+        };
       }
 
       // Buscar vendas do mês
@@ -175,8 +215,8 @@ export default function DashboardPage() {
         `,
         )
         .eq("user_id", user!.id)
-        .gte("data", primeiroDiaMes.toISOString().split("T")[0])
-        .lte("data", ultimoDiaMes.toISOString().split("T")[0]);
+        .gte("data", dataInicio)
+        .lte("data", dataFim);
 
       if (salesError) throw salesError;
 
