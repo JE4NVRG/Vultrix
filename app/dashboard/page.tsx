@@ -223,45 +223,49 @@ export default function DashboardPage() {
       let totalVendas = 0;
       
       try {
+        // Primeiro tenta buscar com relações
         const { data, error: salesError } = await supabase
           .from("sales")
-          .select(
-            `
-            *,
-            products (
-              nome,
-              filamento_id,
-              custo_total,
-              filaments (
-                nome,
-                marca
-              )
-            )
-          `,
-          )
+          .select("*")
           .eq("user_id", user.id)
           .gte("data", dataInicio)
           .lte("data", dataFim);
 
         if (salesError) {
-          console.error("Erro ao buscar vendas detalhadas:", salesError);
+          console.error("Erro ao buscar vendas:", salesError.message || salesError.code || JSON.stringify(salesError));
         } else {
           salesData = data || [];
           totalVendas = salesData.length;
-          console.log("🛒 Vendas detalhadas:", totalVendas);
+          console.log("🛒 Vendas do mês:", totalVendas);
         }
-      } catch (salesErr) {
-        console.error("Erro crítico ao buscar vendas:", salesErr);
+      } catch (salesErr: any) {
+        console.error("Erro crítico ao buscar vendas:", salesErr?.message || salesErr);
+      }
+
+      // Buscar produtos para enriquecer os dados de vendas
+      let productsMap: Record<string, any> = {};
+      try {
+        const { data: productsData } = await supabase
+          .from("products")
+          .select("id, nome, custo_total")
+          .eq("user_id", user.id);
+        
+        productsData?.forEach(p => {
+          productsMap[p.id] = p;
+        });
+      } catch (e) {
+        console.warn("Erro ao buscar produtos para enriquecer vendas");
       }
 
       // Produto mais vendido
       const produtoCount: Record<string, { nome: string; count: number }> = {};
       salesData?.forEach((sale) => {
-        const produtoNome = sale.products?.nome || "Desconhecido";
+        const produto = productsMap[sale.produto_id];
+        const produtoNome = produto?.nome || "Desconhecido";
         if (!produtoCount[sale.produto_id]) {
           produtoCount[sale.produto_id] = { nome: produtoNome, count: 0 };
         }
-        produtoCount[sale.produto_id].count += sale.quantity;
+        produtoCount[sale.produto_id].count += sale.quantity || 1;
       });
 
       const produtoMaisVendido =
