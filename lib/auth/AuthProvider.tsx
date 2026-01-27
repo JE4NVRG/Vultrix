@@ -20,17 +20,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // Função para limpar sessão inválida
+  const clearInvalidSession = async () => {
+    console.warn('🔄 Sessão inválida detectada, limpando...')
+    try {
+      await supabase.auth.signOut({ scope: 'local' })
+    } catch (e) {
+      // Ignorar erros ao fazer logout
+    }
+    setUser(null)
+    setLoading(false)
+  }
+
   useEffect(() => {
     // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
+    supabase.auth.getSession()
+      .then(({ data: { session }, error }) => {
+        if (error) {
+          console.error('Erro ao obter sessão:', error.message)
+          // Se o erro for de refresh token inválido, limpar sessão
+          if (error.message?.includes('Refresh Token') || 
+              error.message?.includes('refresh_token') ||
+              error.message?.includes('Invalid')) {
+            clearInvalidSession()
+            return
+          }
+        }
+        setUser(session?.user ?? null)
+        setLoading(false)
+      })
+      .catch((err) => {
+        console.error('Erro crítico na sessão:', err)
+        clearInvalidSession()
+      })
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user ?? null)
+      (event, session) => {
+        console.log('🔐 Auth event:', event)
+        
+        // Se o token foi invalidado ou expirou
+        if (event === 'TOKEN_REFRESHED') {
+          console.log('✅ Token atualizado com sucesso')
+        }
+        
+        if (event === 'SIGNED_OUT') {
+          setUser(null)
+        } else {
+          setUser(session?.user ?? null)
+        }
+        
         setLoading(false)
       }
     )
@@ -39,7 +78,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    try {
+      await supabase.auth.signOut()
+    } catch (e) {
+      console.error('Erro ao fazer logout:', e)
+    }
+    setUser(null)
     window.location.href = '/login'
   }
 
