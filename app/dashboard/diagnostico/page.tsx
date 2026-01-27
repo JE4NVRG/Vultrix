@@ -4,6 +4,25 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useAuth } from '@/lib/auth/AuthProvider'
 
+type FilamentoInfo = {
+  id: string;
+  nome: string;
+  marca: string;
+  custo_por_kg: number;
+  peso_inicial: number;
+  data_compra: string;
+  cost_per_kg_with_shipping?: number;
+  shipping_share_value?: number;
+};
+
+type DespesaInfo = {
+  id: string;
+  descricao: string;
+  valor: number;
+  data: string;
+  categoria: string;
+};
+
 export default function DiagnosticoPage() {
   const { user, loading: authLoading } = useAuth()
   const [diagnostico, setDiagnostico] = useState({
@@ -14,12 +33,19 @@ export default function DiagnosticoPage() {
     usuarioAutenticado: false,
     erros: [] as string[]
   })
+  const [filamentos, setFilamentos] = useState<FilamentoInfo[]>([])
+  const [despesas, setDespesas] = useState<DespesaInfo[]>([])
+  const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
-    rodarDiagnostico()
+    if (user) {
+      rodarDiagnostico()
+    }
   }, [user])
 
   const rodarDiagnostico = async () => {
+    if (!user) return;
+    
     const erros: string[] = []
     
     // 1. Verificar variáveis de ambiente
@@ -29,74 +55,50 @@ export default function DiagnosticoPage() {
     console.log('🔍 DIAGNÓSTICO INICIADO')
     console.log('📍 URL Supabase:', supabaseUrl)
     console.log('🔑 Key presente:', supabaseKey.substring(0, 20) + '...')
+    console.log('👤 Usuário:', user.email)
     
     let conexaoOk = false
     let tabelasExistem = false
 
-    // 2. Testar conexão com Supabase
+    // 2. Buscar filamentos do usuário
     try {
-      const { data, error } = await supabase.from('filaments').select('count').limit(1)
-      
+      const { data: filamentosData, error } = await supabase
+        .from('filaments')
+        .select('id, nome, marca, custo_por_kg, peso_inicial, data_compra, cost_per_kg_with_shipping, shipping_share_value')
+        .eq('user_id', user.id)
+        .order('data_compra', { ascending: false })
+
       if (error) {
-        console.error('❌ Erro ao conectar tabela filaments:', error)
-        erros.push(`Erro tabela filaments: ${error.message}`)
+        console.error('❌ Erro ao buscar filamentos:', error)
+        erros.push(`Filamentos: ${error.message}`)
       } else {
-        console.log('✅ Conexão com tabela filaments OK')
+        console.log(`✅ Filamentos encontrados: ${filamentosData?.length || 0}`)
+        setFilamentos(filamentosData || [])
         conexaoOk = true
         tabelasExistem = true
       }
     } catch (err: any) {
-      console.error('❌ Erro de conexão:', err)
-      erros.push(`Erro de conexão: ${err.message}`)
+      console.error('❌ Erro:', err)
+      erros.push(`Erro: ${err.message}`)
     }
 
-    // 3. Verificar outras tabelas
+    // 3. Buscar despesas do usuário (categoria material)
     try {
-      const tabelas = ['products', 'sales', 'expenses']
-      
-      for (const tabela of tabelas) {
-        const { error } = await supabase.from(tabela).select('count').limit(1)
-        if (error) {
-          console.error(`❌ Erro tabela ${tabela}:`, error)
-          erros.push(`Tabela ${tabela}: ${error.message}`)
-        } else {
-          console.log(`✅ Tabela ${tabela} OK`)
-        }
+      const { data: despesasData, error } = await supabase
+        .from('expenses')
+        .select('id, descricao, valor, data, categoria')
+        .eq('user_id', user.id)
+        .order('data', { ascending: false })
+
+      if (error) {
+        console.error('❌ Erro ao buscar despesas:', error)
+        erros.push(`Despesas: ${error.message}`)
+      } else {
+        console.log(`✅ Despesas encontradas: ${despesasData?.length || 0}`)
+        setDespesas(despesasData || [])
       }
     } catch (err: any) {
-      console.error('❌ Erro ao verificar tabelas:', err)
-      erros.push(`Erro tabelas: ${err.message}`)
-    }
-
-    // 4. Verificar autenticação
-    const usuarioAutenticado = !!user
-    if (user) {
-      console.log('✅ Usuário autenticado:', user.email)
-      console.log('📧 Email:', user.email)
-      console.log('🆔 ID:', user.id)
-    } else {
-      console.log('❌ Usuário NÃO autenticado')
-      erros.push('Usuário não autenticado')
-    }
-
-    // 5. Testar leitura de dados do usuário
-    if (user) {
-      try {
-        const { data: filamentos, error } = await supabase
-          .from('filaments')
-          .select('*')
-          .eq('user_id', user.id)
-        
-        if (error) {
-          console.error('❌ Erro ao buscar filamentos do usuário:', error)
-          erros.push(`Erro RLS filaments: ${error.message}`)
-        } else {
-          console.log(`✅ Filamentos do usuário: ${filamentos?.length || 0}`)
-        }
-      } catch (err: any) {
-        console.error('❌ Erro ao testar RLS:', err)
-        erros.push(`Erro RLS: ${err.message}`)
-      }
+      console.error('❌ Erro:', err)
     }
 
     setDiagnostico({
@@ -104,11 +106,58 @@ export default function DiagnosticoPage() {
       supabaseKey: supabaseKey.substring(0, 30) + '...',
       conexaoOk,
       tabelasExistem,
-      usuarioAutenticado,
+      usuarioAutenticado: !!user,
       erros
     })
 
     console.log('🏁 DIAGNÓSTICO FINALIZADO')
+  }
+
+  // Sincronizar filamentos com despesas
+  const syncFilamentosParaDespesas = async () => {
+    if (!user || filamentos.length === 0) {
+      alert('Nenhum filamento para sincronizar')
+      return
+    }
+
+    const confirmSync = confirm(
+      `Criar despesas para ${filamentos.length} filamento(s)?\n\n` +
+      `⚠️ Verifique se as despesas já não existem para evitar duplicatas.`
+    )
+
+    if (!confirmSync) return
+
+    setSyncing(true)
+    let created = 0
+
+    for (const filamento of filamentos) {
+      const pesoKg = (filamento.peso_inicial || 1000) / 1000
+      const custoPorKg = filamento.cost_per_kg_with_shipping || filamento.custo_por_kg || 0
+      const valorTotal = pesoKg * custoPorKg + (filamento.shipping_share_value || 0)
+
+      if (valorTotal <= 0) continue
+
+      const descricao = `Compra de filamento: ${filamento.nome} (${filamento.marca || 'Sem marca'}) - ${pesoKg.toFixed(2)}kg x R$${custoPorKg.toFixed(2)}/kg`
+
+      try {
+        const { error } = await supabase.from('expenses').insert({
+          user_id: user.id,
+          categoria: 'material',
+          descricao: descricao,
+          valor: valorTotal,
+          data: filamento.data_compra,
+          recorrente: false,
+        })
+
+        if (!error) created++
+      } catch (err) {
+        console.error('Erro ao criar despesa:', err)
+      }
+    }
+
+    alert(`✅ ${created} despesa(s) criada(s)!`)
+    setSyncing(false)
+    rodarDiagnostico()
   }
 
   if (authLoading) {
@@ -147,46 +196,119 @@ export default function DiagnosticoPage() {
             <span className={diagnostico.usuarioAutenticado ? 'text-green-500' : 'text-red-500'}>
               {diagnostico.usuarioAutenticado ? '✅' : '❌'}
             </span>
-            <span>Usuário autenticado</span>
+            <span>Usuário autenticado: {user?.email}</span>
           </div>
         </div>
       </div>
 
-      {/* Configuração */}
+      {/* Filamentos Cadastrados */}
       <div className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-6">
-        <h2 className="text-xl font-bold mb-4">⚙️ Configuração</h2>
-        <div className="space-y-2 font-mono text-sm">
-          <div>
-            <span className="text-vultrix-light/50">URL:</span>
-            <p className="text-vultrix-accent break-all">{diagnostico.supabaseUrl}</p>
-          </div>
-          <div>
-            <span className="text-vultrix-light/50">Key:</span>
-            <p className="text-vultrix-light/70 break-all">{diagnostico.supabaseKey}</p>
-          </div>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">🧵 Filamentos Cadastrados ({filamentos.length})</h2>
+          {filamentos.length > 0 && (
+            <button
+              onClick={syncFilamentosParaDespesas}
+              disabled={syncing}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+            >
+              {syncing ? '⏳ Sincronizando...' : '💵 Sincronizar para Despesas'}
+            </button>
+          )}
         </div>
+        {filamentos.length === 0 ? (
+          <p className="text-vultrix-light/50">Nenhum filamento cadastrado</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-vultrix-light/50 border-b border-vultrix-gray">
+                  <th className="pb-2">Nome</th>
+                  <th className="pb-2">Marca</th>
+                  <th className="pb-2">Custo/kg</th>
+                  <th className="pb-2">Peso Inicial</th>
+                  <th className="pb-2">Data Compra</th>
+                  <th className="pb-2">Valor Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filamentos.map((f) => {
+                  const pesoKg = (f.peso_inicial || 1000) / 1000;
+                  const custoPorKg = f.cost_per_kg_with_shipping || f.custo_por_kg || 0;
+                  const valorTotal = pesoKg * custoPorKg + (f.shipping_share_value || 0);
+                  return (
+                    <tr key={f.id} className="border-b border-vultrix-gray/30">
+                      <td className="py-2">{f.nome}</td>
+                      <td className="py-2">{f.marca || 'Sem marca'}</td>
+                      <td className="py-2">R$ {custoPorKg.toFixed(2)}</td>
+                      <td className="py-2">{f.peso_inicial || 1000}g</td>
+                      <td className="py-2">{new Date(f.data_compra).toLocaleDateString('pt-BR')}</td>
+                      <td className="py-2 text-green-400 font-semibold">R$ {valorTotal.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="font-bold text-green-400">
+                  <td colSpan={5} className="pt-4 text-right">Total em Filamentos:</td>
+                  <td className="pt-4">
+                    R$ {filamentos.reduce((sum, f) => {
+                      const pesoKg = (f.peso_inicial || 1000) / 1000;
+                      const custoPorKg = f.cost_per_kg_with_shipping || f.custo_por_kg || 0;
+                      return sum + (pesoKg * custoPorKg) + (f.shipping_share_value || 0);
+                    }, 0).toFixed(2)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Usuário */}
-      {user && (
-        <div className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-6">
-          <h2 className="text-xl font-bold mb-4">👤 Usuário Atual</h2>
-          <div className="space-y-2 font-mono text-sm">
-            <div>
-              <span className="text-vultrix-light/50">Email:</span>
-              <p className="text-green-500">{user.email}</p>
-            </div>
-            <div>
-              <span className="text-vultrix-light/50">ID:</span>
-              <p className="text-vultrix-light/70 break-all">{user.id}</p>
-            </div>
-            <div>
-              <span className="text-vultrix-light/50">Criado em:</span>
-              <p className="text-vultrix-light/70">{new Date(user.created_at!).toLocaleString('pt-BR')}</p>
-            </div>
+      {/* Despesas (Material) */}
+      <div className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-6">
+        <h2 className="text-xl font-bold mb-4">💸 Despesas Registradas ({despesas.length})</h2>
+        {despesas.length === 0 ? (
+          <p className="text-vultrix-light/50">Nenhuma despesa registrada</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-vultrix-light/50 border-b border-vultrix-gray">
+                  <th className="pb-2">Descrição</th>
+                  <th className="pb-2">Categoria</th>
+                  <th className="pb-2">Data</th>
+                  <th className="pb-2">Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {despesas.slice(0, 10).map((d) => (
+                  <tr key={d.id} className="border-b border-vultrix-gray/30">
+                    <td className="py-2 max-w-md truncate">{d.descricao}</td>
+                    <td className="py-2">
+                      <span className={`px-2 py-1 rounded text-xs ${d.categoria === 'material' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                        {d.categoria}
+                      </span>
+                    </td>
+                    <td className="py-2">{new Date(d.data).toLocaleDateString('pt-BR')}</td>
+                    <td className="py-2 text-red-400 font-semibold">R$ {d.valor.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="font-bold text-red-400">
+                  <td colSpan={3} className="pt-4 text-right">Total em Despesas:</td>
+                  <td className="pt-4">
+                    R$ {despesas.reduce((sum, d) => sum + d.valor, 0).toFixed(2)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+            {despesas.length > 10 && (
+              <p className="text-vultrix-light/50 text-sm mt-2">Mostrando 10 de {despesas.length} despesas</p>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Erros */}
       {diagnostico.erros.length > 0 && (
@@ -202,23 +324,13 @@ export default function DiagnosticoPage() {
         </div>
       )}
 
-      {/* Sucesso */}
-      {diagnostico.erros.length === 0 && diagnostico.conexaoOk && (
-        <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-6">
-          <h2 className="text-xl font-bold mb-4 text-green-500">✅ Tudo OK!</h2>
-          <p className="text-green-400">
-            Sistema configurado corretamente. Todas as verificações passaram.
-          </p>
-        </div>
-      )}
-
       {/* Botões de Ação */}
       <div className="flex gap-4">
         <button
           onClick={rodarDiagnostico}
           className="px-6 py-3 bg-vultrix-accent text-white rounded-lg font-semibold hover:bg-vultrix-accent/90 transition-colors"
         >
-          🔄 Rodar Novamente
+          🔄 Atualizar Diagnóstico
         </button>
         <button
           onClick={() => window.location.href = '/dashboard'}
@@ -226,14 +338,6 @@ export default function DiagnosticoPage() {
         >
           ← Voltar ao Dashboard
         </button>
-      </div>
-
-      {/* Console Info */}
-      <div className="bg-vultrix-dark border border-vultrix-gray rounded-xl p-6">
-        <h2 className="text-xl font-bold mb-4">💡 Dica</h2>
-        <p className="text-vultrix-light/70">
-          Abra o Console do navegador (F12) para ver logs detalhados de cada verificação.
-        </p>
       </div>
     </div>
   )
